@@ -1,28 +1,33 @@
 //! This example demonstrates the built-in 3d shapes in Bevy.
 //! The scene includes a patterned texture and a rotation for visualizing the normals and UVs.
 
+use berdicle::{
+    util::transform_from_ddt, ErasedSubParticleSystem, ExpirationState, Particle, ParticleInstance,
+    ParticlePlugin, ParticleSystem, ParticleSystemBundle, StandardParticle, SubParticleSystem,
+};
 use bevy::{
-    diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, prelude::*, render::{
+    diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin},
+    prelude::*,
+    render::{
         render_asset::RenderAssetUsages,
         render_resource::{Extent3d, TextureDimension, TextureFormat},
-    }, window::PresentMode
-};
-use berdicle::{
-    material::{ParticleSystemBundle, StandardParticle}, util::transform_from_ddt, ErasedSubParticleSystem, ExpirationState, Particle, ParticleInstance, ParticlePlugin, ParticleSystem, SubParticleSystem
+    },
+    window::PresentMode,
 };
 use std::f32::consts::PI;
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins
-            .set(ImagePlugin::default_nearest())
-            .set(WindowPlugin {
-                primary_window: Some(Window {
-                    present_mode: PresentMode::AutoNoVsync,
+        .add_plugins(
+            DefaultPlugins
+                .set(ImagePlugin::default_nearest())
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        present_mode: PresentMode::AutoNoVsync,
+                        ..Default::default()
+                    }),
                     ..Default::default()
                 }),
-                ..Default::default()
-            })
         )
         .add_plugins(FrameTimeDiagnosticsPlugin)
         .add_plugins(ParticlePlugin)
@@ -97,7 +102,7 @@ impl ParticleSystem for MainSpawner {
         MainParticle {
             seed,
             life_time: 0.,
-            meta: 0.
+            meta: 0.,
         }
     }
 }
@@ -119,7 +124,9 @@ impl Particle for TrailParticle {
     }
 
     fn get_transform(&self) -> Transform {
-        let point = self.origin.transform_point(Vec3::new(0., self.life_time, 0.));
+        let point = self
+            .origin
+            .transform_point(Vec3::new(0., self.life_time, 0.));
         self.origin.with_translation(point)
     }
 
@@ -174,7 +181,9 @@ impl SubParticleSystem for ChildSpawner {
 
     fn into_sub_particle(parent: &Self::Parent, seed: f32) -> Self::Particle {
         TrailParticle {
-            origin: parent.get_transform().looking_to(parent.get_tangent(), Vec3::Y),
+            origin: parent
+                .get_transform()
+                .looking_to(parent.get_tangent(), Vec3::Y),
             seed,
             life_time: 0.,
         }
@@ -196,38 +205,40 @@ fn setup(
         text: Text::from_section("FPS: 60.00", Default::default()),
         ..Default::default()
     });
-    let root = commands.spawn(ParticleSystemBundle {
-        particle_system: ParticleInstance::new(MainSpawner(0.)),
-        mesh: meshes.add(
-            Cone {
-                radius: 0.5,
-                height: 0.5,
-            }
-            .mesh(),
-        ),
-        material: materials2.add(StandardParticle {
-            base_color: LinearRgba::new(2., 2., 2., 1.),
-            texture: images.add(uv_debug_texture()),
-        }),
-        transform: Transform::from_xyz(10., 10., 10.)
-            .with_rotation(Quat::from_rotation_x(f32::to_radians(90.))),
-        ..Default::default()
-    }).id();
+    let root = commands
+        .spawn(ParticleSystemBundle {
+            particle_system: ParticleInstance::new(MainSpawner(0.)),
+            mesh: meshes.add(
+                Cone {
+                    radius: 0.5,
+                    height: 0.5,
+                }
+                .mesh(),
+            ),
+            material: materials2.add(StandardParticle {
+                base_color: LinearRgba::new(2., 2., 2., 1.),
+                texture: images.add(uv_debug_texture()),
+            }),
+            transform: Transform::from_xyz(10., 10., 10.)
+                .with_rotation(Quat::from_rotation_x(f32::to_radians(90.))),
+            ..Default::default()
+        })
+        .id();
 
-    commands.spawn(ParticleSystemBundle {
-        particle_system: ParticleInstance::new(ChildSpawner(0.)),
-        mesh: meshes.add(
-            Sphere::new(0.1)
-            .mesh(),
-        ),
-        material: materials2.add(StandardParticle {
-            base_color: LinearRgba::new(2., 2., 2., 1.),
-            texture: images.add(uv_debug_texture()),
-        }),
-        transform: Transform::from_xyz(10., 10., 10.)
-            .with_rotation(Quat::from_rotation_x(f32::to_radians(90.))),
-        ..Default::default()
-    }.parented(root));
+    commands.spawn(
+        ParticleSystemBundle {
+            particle_system: ParticleInstance::new(ChildSpawner(0.)),
+            mesh: meshes.add(Sphere::new(0.1).mesh()),
+            material: materials2.add(StandardParticle {
+                base_color: LinearRgba::new(2., 2., 2., 1.),
+                texture: images.add(uv_debug_texture()),
+            }),
+            transform: Transform::from_xyz(10., 10., 10.)
+                .with_rotation(Quat::from_rotation_x(f32::to_radians(90.))),
+            ..Default::default()
+        }
+        .parented(root),
+    );
 
     // ground plane
     commands.spawn(PbrBundle {
@@ -283,14 +294,11 @@ fn uv_debug_texture() -> Image {
     )
 }
 
-fn fps(
-    diagnostics: Res<DiagnosticsStore>,
-    mut query: Query<&mut Text>,
-) {
-
+fn fps(diagnostics: Res<DiagnosticsStore>, mut query: Query<&mut Text>) {
     if let Some(value) = diagnostics
         .get(&FrameTimeDiagnosticsPlugin::FPS)
-        .and_then(|fps| fps.smoothed()) {
+        .and_then(|fps| fps.smoothed())
+    {
         query.single_mut().sections[0].value = format!("FPS: {:.2}", value)
     }
 }

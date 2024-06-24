@@ -1,29 +1,33 @@
 //! This example demonstrates the built-in 3d shapes in Bevy.
 //! The scene includes a patterned texture and a rotation for visualizing the normals and UVs.
 
+use berdicle::{
+    ExpirationState, Particle, ParticleInstance, ParticlePlugin, ParticleSystem,
+    ParticleSystemBundle, StandardParticle,
+};
 use bevy::{
-    diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, prelude::*, render::{
+    diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin},
+    prelude::*,
+    render::{
         render_asset::RenderAssetUsages,
         render_resource::{Extent3d, TextureDimension, TextureFormat},
-    }, window::PresentMode
-};
-use berdicle::{
-    material::{ParticleSystemBundle, StandardParticle},
-    ExpirationState, Particle, ParticleInstance, ParticlePlugin, ParticleSystem,
+    },
+    window::PresentMode,
 };
 use std::f32::consts::PI;
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins
-            .set(ImagePlugin::default_nearest())
-            .set(WindowPlugin {
-                primary_window: Some(Window {
-                    present_mode: PresentMode::AutoNoVsync,
+        .add_plugins(
+            DefaultPlugins
+                .set(ImagePlugin::default_nearest())
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        present_mode: PresentMode::AutoNoVsync,
+                        ..Default::default()
+                    }),
                     ..Default::default()
                 }),
-                ..Default::default()
-            })
         )
         .add_plugins(FrameTimeDiagnosticsPlugin)
         .add_plugins(ParticlePlugin)
@@ -186,14 +190,11 @@ fn uv_debug_texture() -> Image {
     )
 }
 
-fn fps(
-    diagnostics: Res<DiagnosticsStore>,
-    mut query: Query<&mut Text>,
-) {
-
+fn fps(diagnostics: Res<DiagnosticsStore>, mut query: Query<&mut Text>) {
     if let Some(value) = diagnostics
         .get(&FrameTimeDiagnosticsPlugin::FPS)
-        .and_then(|fps| fps.smoothed()) {
+        .and_then(|fps| fps.smoothed())
+    {
         query.single_mut().sections[0].value = format!("FPS: {:.2}", value)
     }
 }

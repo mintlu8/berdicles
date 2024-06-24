@@ -1,4 +1,8 @@
-use std::{any::{type_name, TypeId}, mem::{align_of, size_of, MaybeUninit}, slice};
+use std::{
+    any::{type_name, TypeId},
+    mem::{align_of, size_of, MaybeUninit},
+    slice,
+};
 
 use bevy::{math::Vec4, prelude::Component};
 use bytemuck::{Pod, Zeroable};
@@ -7,10 +11,11 @@ use crate::Particle;
 
 fn validate<T>() {
     if !matches!(align_of::<T>(), 1 | 2 | 4 | 8 | 16) {
-        panic!("Bad alignment for {}", type_name::<T>())
+        panic!("Bad alignment for {}.", type_name::<T>())
     }
 }
 
+/// [`MaybeUninit`] with alignment and size `16`.
 #[derive(Debug, Clone, Copy)]
 #[repr(C, align(16))]
 pub struct Align16MaybeUninit(MaybeUninit<[u8; 16]>);
@@ -57,6 +62,7 @@ impl ExtractedParticleBuffer {
     }
 }
 
+/// Type of particle buffer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ParticleBufferType {
     #[default]
@@ -65,6 +71,7 @@ pub enum ParticleBufferType {
     RingBuffer(TypeId),
 }
 
+/// Type erased buffer for particles.
 #[derive(Debug, Component, Default)]
 pub struct ParticleBuffer {
     /// Type of particle, for safety checks.
@@ -82,14 +89,17 @@ pub struct ParticleBuffer {
 }
 
 impl ParticleBuffer {
+    /// Return `true` if buffer is uninitialized, usually created by `default()`.
     pub const fn is_uninit(&self) -> bool {
         matches!(self.particle_type, ParticleBufferType::Uninit)
     }
 
+    /// Returns `true` if no particle is alive.
     pub const fn is_empty(&self) -> bool {
         self.len == 0
     }
 
+    /// Create a buffer in retain mode.
     pub fn new_retain<T: Particle>(nominal_capacity: usize) -> Self {
         validate::<T>();
         let real_capacity = (nominal_capacity * size_of::<T>() + 15) / 16;
@@ -104,6 +114,7 @@ impl ParticleBuffer {
         }
     }
 
+    /// Create a buffer in ring buffer mode.
     pub fn new_ring<T: Particle>(nominal_capacity: usize) -> Self {
         validate::<T>();
         let real_capacity = (nominal_capacity * size_of::<T>() + 15) / 16;

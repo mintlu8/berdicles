@@ -35,12 +35,13 @@ pub struct ParticleEvent {
     pub tangent: Vec3,
 }
 
-#[derive(Debug, Component, Default)]
-pub struct ParticleEventBuffer(Vec<ParticleEvent>);
-
-/// Parent of the particle, if present will read data/event from their particle buffer.
+/// Parent of the particle, if present will read data/event from the parent's particle buffer.
 #[derive(Debug, Component, Clone, Copy)]
 pub struct ParticleParent(pub Entity);
+
+/// A buffer of particle events.
+#[derive(Debug, Component, Default)]
+pub struct ParticleEventBuffer(Vec<ParticleEvent>);
 
 impl Deref for ParticleEventBuffer {
     type Target = Vec<ParticleEvent>;
@@ -56,17 +57,19 @@ impl DerefMut for ParticleEventBuffer {
     }
 }
 
+/// A [`ParticleSystem`] that spawns particles from a parent
+/// `ParticleSystem`'s alive particles.
 pub trait SubParticleSystem: ParticleSystem {
     type Parent: Particle;
 
-    /// * For [`ParticleEventType::Always`], determines how many particles to spawn in a frame.
-    /// * For others, returns how many to spawn in a burst.
+    /// * Determines how many particles to spawn in a frame **per particle**.
     fn spawn_step_sub(&mut self, parent: &mut Self::Parent, dt: f32) -> usize;
 
     /// Convert a random seed into a particle with parent information.
     fn into_sub_particle(parent: &Self::Parent, seed: f32) -> Self::Particle;
 }
 
+/// An erased [`SubParticleSystem`].
 pub trait ErasedSubParticleSystem: ErasedParticleSystem {
     fn spawn_from_parent(
         &mut self,
@@ -106,15 +109,17 @@ impl Debug for dyn ErasedSubParticleSystem {
     }
 }
 
+/// A [`ParticleSystem`] that spawns particles
+/// on parent's emitted events.
 pub trait EventParticleSystem: ParticleSystem {
-    /// * For [`ParticleEventType::Always`], determines how many particles to spawn in a frame.
-    /// * For others, returns how many to spawn in a burst.
+    /// Returns how many to spawn in a burst on an event.
     fn spawn_event(&mut self, parent: &ParticleEvent) -> usize;
 
     /// Convert a random seed into a particle with parent information.
     fn into_sub_particle(parent: &ParticleEvent, seed: f32) -> Self::Particle;
 }
 
+/// Type erased [`EventParticleSystem`].
 pub trait ErasedEventParticleSystem: ErasedParticleSystem {
     fn spawn_from_event(&mut self, buffer: &mut ParticleBuffer, parent: &ParticleEventBuffer);
 }

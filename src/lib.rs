@@ -1,7 +1,9 @@
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::type_complexity)]
 use std::{
-    any::Any, fmt::Debug, ops::{Deref, DerefMut}
+    any::Any,
+    fmt::Debug,
+    ops::{Deref, DerefMut},
 };
 
 use bevy::{
@@ -18,36 +20,35 @@ use bevy::{
     time::Time,
     transform::components::Transform,
 };
-use material::StandardParticle;
 use noop::NoopParticleSystem;
-use pipeline::ParticleMaterialPlugin;
 
-pub mod material;
-pub mod pipeline;
+mod material;
+pub use material::*;
+mod pipeline;
+pub use pipeline::ParticleMaterialPlugin;
 pub mod shader;
 mod sub;
 pub use sub::*;
-pub mod util;
 mod buffer;
+pub mod util;
 pub use buffer::*;
 
+/// Plugin for `berdicle`.
+///
+/// Adds support for [`StandardParticle`],
+/// other particle materials must be manually added via
+/// [`ParticleMaterialPlugin`].
 pub struct ParticlePlugin;
 
 impl Plugin for ParticlePlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.world_mut().resource_mut::<Assets<Shader>>().insert(
             &shader::PARTICLE_VERTEX,
-            Shader::from_wgsl(
-                shader::SHADER_VERTEX,
-                "berdicle/particle_vertex.wgsl",
-            ),
+            Shader::from_wgsl(shader::SHADER_VERTEX, "berdicle/particle_vertex.wgsl"),
         );
         app.world_mut().resource_mut::<Assets<Shader>>().insert(
             &shader::PARTICLE_FRAGMENT,
-            Shader::from_wgsl(
-                shader::SHADER_FRAGMENT,
-                "berdicle/particle_fragment.wgsl",
-            ),
+            Shader::from_wgsl(shader::SHADER_FRAGMENT, "berdicle/particle_fragment.wgsl"),
         );
         app.add_plugins(ExtractComponentPlugin::<ParticleInstance>::default());
         app.add_plugins(ParticleMaterialPlugin::<StandardParticle>::default());
@@ -55,6 +56,7 @@ impl Plugin for ParticlePlugin {
     }
 }
 
+/// The main system of `berdicle`, runs in [`Update`].
 pub fn particle_system(
     time: Res<Time>,
     mut particles: Query<(
@@ -66,17 +68,19 @@ pub fn particle_system(
     )>,
 ) {
     let dt = time.delta_seconds();
-    particles.par_iter_mut().for_each(|(_, mut system, mut buffer, events, _)| {
-        if buffer.is_uninit() {
-            *buffer = system.spawn_particle_buffer();
-        }
-        if let Some(mut events) = events {
-            events.clear();
-            system.update_with_buffer(dt, &mut buffer, &mut events);
-        } else {
-            system.update(dt, &mut buffer);
-        }
-    });
+    particles
+        .par_iter_mut()
+        .for_each(|(_, mut system, mut buffer, events, _)| {
+            if buffer.is_uninit() {
+                *buffer = system.spawn_particle_buffer();
+            }
+            if let Some(mut events) = events {
+                events.clear();
+                system.update_with_event_buffer(dt, &mut buffer, &mut events);
+            } else {
+                system.update(dt, &mut buffer);
+            }
+        });
 
     // Safety: parent is checked to not be the same entity.
     for (entity, mut system, mut buffer, _, parent) in unsafe { particles.iter_unsafe() } {
@@ -101,8 +105,6 @@ pub fn particle_system(
         }
     }
 }
-
-
 
 fn sort_unstable<T>(buf: &mut [T], mut key: impl FnMut(&T) -> bool) {
     if buf.len() < 2 {
@@ -135,6 +137,7 @@ pub enum ParticleBufferStrategy {
     RingBuffer,
 }
 
+/// If and how a particle has expired.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExpirationState {
     None,
@@ -148,6 +151,7 @@ impl ExpirationState {
     }
 }
 
+/// An [`Particle`]. Must be copy and have alignment less than `16`.
 pub trait Particle: Copy + 'static {
     /// Obtain the seed used to generate the particle.
     fn get_seed(&self) -> f32;
@@ -236,7 +240,7 @@ pub trait ParticleSystem {
 
     /// Obtain the capacity of the buffer, this value is read once upon initialization
     /// and will not be changed during simulation.
-    /// 
+    ///
     /// We might increment this value by a little bit for alignment.
     fn capacity(&self) -> usize;
 
@@ -252,7 +256,7 @@ pub trait ParticleSystem {
     fn spawn_step(&mut self, time: f32) -> usize;
 
     /// Convert a random seed into a particle.
-    /// 
+    ///
     /// If `spawn_step` is always `0`, consider implementing as [`unreachable!`].
     fn build_particle(&self, seed: f32) -> Self::Particle;
 
@@ -271,10 +275,11 @@ pub trait ParticleSystem {
     }
 }
 
+/// Type erased version of [`ParticleSystem`].
 pub trait ErasedParticleSystem: Send + Sync {
     fn as_debug(&self) -> &dyn Debug;
     fn update(&mut self, dt: f32, buffer: &mut ParticleBuffer);
-    fn update_with_buffer(
+    fn update_with_event_buffer(
         &mut self,
         dt: f32,
         buffer: &mut ParticleBuffer,
@@ -344,6 +349,7 @@ mod noop {
     }
 }
 
+/// Component form of a type erased [`ParticleSystem`].
 #[derive(Debug, Component)]
 pub struct ParticleInstance(Box<dyn ErasedParticleSystem>);
 
@@ -415,7 +421,7 @@ where
         }
     }
 
-    fn update_with_buffer(
+    fn update_with_event_buffer(
         &mut self,
         dt: f32,
         buffer: &mut ParticleBuffer,

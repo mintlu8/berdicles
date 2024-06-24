@@ -14,7 +14,9 @@ use bevy::{
 };
 
 use crate::{
-    shader::{PARTICLE_FRAGMENT, PARTICLE_VERTEX}, sub::{ParticleEventBuffer, ParticleParent}, ParticleBuffer, ParticleInstance
+    shader::{PARTICLE_FRAGMENT, PARTICLE_VERTEX},
+    sub::{ParticleEventBuffer, ParticleParent},
+    ParticleBuffer, ParticleInstance,
 };
 
 /// [`Material`] that displays an unlit combination of `base_color` and `texture` on a mesh.
@@ -36,11 +38,16 @@ impl Material for StandardParticle {
     }
 }
 
+/// A Bundle of a particle system.
 #[derive(Debug, Bundle)]
 pub struct ParticleSystemBundle<M: Material> {
+    /// A type erased [`ParticleSystem`](crate::ParticleSystem).
     pub particle_system: ParticleInstance,
+    /// Does not need to be created by the user.
     pub particle_buffer: ParticleBuffer,
+    /// Mesh shape of the particle.
     pub mesh: Handle<Mesh>,
+    /// Material of the particle.
     pub material: Handle<M>,
     pub transform: Transform,
     pub global_transform: GlobalTransform,
@@ -86,8 +93,8 @@ pub struct ParentedEventParticleSystemBundle<M: Material> {
     pub events: ParticleEventBuffer,
 }
 
-
 impl<M: Material> ParticleSystemBundle<M> {
+    /// Add a parent to the particle system.
     pub fn parented(self, entity: Entity) -> ParentedParticleSystemBundle<M> {
         ParentedParticleSystemBundle {
             bundle: self,
@@ -95,6 +102,7 @@ impl<M: Material> ParticleSystemBundle<M> {
         }
     }
 
+    /// Add an [`ParticleEventBuffer`] to the current particle system.
     pub fn with_events(self) -> EventParticleSystemBundle<M> {
         EventParticleSystemBundle {
             bundle: self,
@@ -104,6 +112,7 @@ impl<M: Material> ParticleSystemBundle<M> {
 }
 
 impl<M: Material> ParentedParticleSystemBundle<M> {
+    /// Add an [`ParticleEventBuffer`] to the current particle system.
     pub fn with_events(self) -> ParentedEventParticleSystemBundle<M> {
         ParentedEventParticleSystemBundle {
             bundle: self.bundle,
@@ -114,6 +123,7 @@ impl<M: Material> ParentedParticleSystemBundle<M> {
 }
 
 impl<M: Material> EventParticleSystemBundle<M> {
+    /// Add a parent to the particle system.
     pub fn parented(self, entity: Entity) -> ParentedEventParticleSystemBundle<M> {
         ParentedEventParticleSystemBundle {
             bundle: self.bundle,
