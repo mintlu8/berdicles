@@ -1,0 +1,10 @@
+[package]
+name = "berdicle"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = "0.14.0-rc.3"
+bytemuck = "1.16.1"
+const_format = "0.2.32"
+fastrand = "2.1.0"
