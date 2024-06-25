@@ -244,7 +244,7 @@ fn setup(
     commands.spawn(PbrBundle {
         mesh: meshes.add(Plane3d::default().mesh().size(50.0, 50.0).subdivisions(10)),
         material: materials.add(StandardMaterial::from_color(Srgba::GREEN)),
-        transform: Transform::from_xyz(0., -2., 0.),
+        transform: Transform::from_xyz(0., -8., 0.),
         ..default()
     });
 

@@ -1,7 +1,7 @@
 use std::{
     any::{type_name, TypeId},
     mem::{align_of, size_of, MaybeUninit},
-    slice,
+    slice, sync::{Arc, Mutex},
 };
 
 use bevy::{math::Vec4, prelude::Component};
@@ -46,7 +46,7 @@ pub struct ExtractedParticle {
 }
 
 #[derive(Debug, Component)]
-pub struct ExtractedParticleBuffer(pub(crate) Vec<ExtractedParticle>);
+pub(crate) struct ExtractedParticleBuffer(pub(crate) Arc<Vec<ExtractedParticle>>);
 
 impl ExtractedParticleBuffer {
     pub fn is_empty(&self) -> bool {
@@ -86,6 +86,8 @@ pub struct ParticleBuffer {
     pub(crate) ptr: usize,
     /// Ring: number of particles initialized, never goes down.
     pub(crate) ring_capacity: usize,
+    /// Allocation of extracted particles on the render world.
+    pub(crate) extracted_allocation: Mutex<Arc<Vec<ExtractedParticle>>>
 }
 
 impl ParticleBuffer {
@@ -111,6 +113,7 @@ impl ParticleBuffer {
             capacity,
             ptr: 0,
             ring_capacity: 0,
+            extracted_allocation: Default::default()
         }
     }
 
@@ -126,6 +129,7 @@ impl ParticleBuffer {
             capacity,
             ptr: 0,
             ring_capacity: 0,
+            extracted_allocation: Default::default()
         }
     }
 

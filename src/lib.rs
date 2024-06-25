@@ -3,7 +3,7 @@
 use std::{
     any::Any,
     fmt::Debug,
-    ops::{Deref, DerefMut},
+    ops::{Deref, DerefMut}, sync::Arc,
 };
 
 use bevy::{
@@ -18,7 +18,7 @@ use bevy::{
         render_resource::Shader,
     },
     time::Time,
-    transform::components::Transform,
+    transform::components::{GlobalTransform, Transform},
 };
 use noop::NoopParticleSystem;
 
@@ -29,6 +29,7 @@ pub use pipeline::ParticleMaterialPlugin;
 pub mod shader;
 mod sub;
 pub use sub::*;
+mod trail;
 mod buffer;
 pub mod util;
 pub use buffer::*;
@@ -50,7 +51,7 @@ impl Plugin for ParticlePlugin {
             &shader::PARTICLE_FRAGMENT,
             Shader::from_wgsl(shader::SHADER_FRAGMENT, "berdicle/particle_fragment.wgsl"),
         );
-        app.add_plugins(ExtractComponentPlugin::<ParticleInstance>::default());
+        app.add_plugins(ExtractComponentPlugin::<ExtractedParticleBuffer>::default());
         app.add_plugins(ParticleMaterialPlugin::<StandardParticle>::default());
         app.add_systems(Update, particle_system);
     }
@@ -151,7 +152,7 @@ impl ExpirationState {
     }
 }
 
-/// An [`Particle`]. Must be copy and have alignment less than `16`.
+/// An [`Particle`]. Must be [`Copy`] and have alignment less than `16`.
 pub trait Particle: Copy + 'static {
     /// Obtain the seed used to generate the particle.
     fn get_seed(&self) -> f32;
@@ -178,9 +179,16 @@ pub trait Particle: Copy + 'static {
     /// Obtain the color of the particle.
     fn get_color(&self) -> Srgba;
 
-    /// Try obtain a curved path from start to current position.
-    fn get_curve(&self) -> Option<Box<dyn Fn(f32) -> Vec3>> {
-        None
+    /// Obtain a curved path of the particle's trajectory,
+    /// input should be `lifetime`.
+    /// 
+    /// # Panics
+    /// 
+    /// If not supported.
+    #[allow(unreachable_code)]
+    fn get_curve(&self) -> impl Fn(f32) -> Vec3 {
+        panic!("Not implemented!");
+        |_| panic!("Not implemented!")
     }
 
     /// Advance time on this particle.
@@ -221,7 +229,14 @@ pub trait ParticleSystem {
     /// Currently unimplemented.
     const PAR_ITER: bool = false;
 
+    /// If true, ignore [`Transform`] and [`GlobalTransform`].
+    const WORLD_SPACE: bool = false;
+
     /// Changes what strategy to use when cleaning up used particles.
+    /// 
+    /// * Retain(default): Remove expired particles by moving alive particles in front.
+    /// * RingBuffer: Ignore expired particles, should only be used if lifetime is constant
+    /// and capacity is well predicted.
     const STRATEGY: ParticleBufferStrategy = ParticleBufferStrategy::Retain;
 
     /// Particle type of the system.
@@ -232,6 +247,8 @@ pub trait ParticleSystem {
     type Particle: Particle;
 
     /// Obtain debug information.
+    /// 
+    /// If not specified, `Debug` will only print a generic struct.
     fn as_debug(&self) -> &dyn Debug {
         #[derive(Debug)]
         pub struct ErasedParticleSystem;
@@ -251,18 +268,41 @@ pub trait ParticleSystem {
 
     /// Determines how many particles to spawn when a time step passes.
     ///
-    /// If used as a sub particle system, this will still be called,
+    /// If used as a sub particle system, this step will still be called,
     /// set this to 0 if not needed.
     fn spawn_step(&mut self, time: f32) -> usize;
 
     /// Convert a random seed into a particle.
     ///
-    /// If `spawn_step` is always `0`, consider implementing as [`unreachable!`].
+    /// If `spawn_step` is always `0`,
+    /// it's safe to implement with [`unreachable!`].
     fn build_particle(&self, seed: f32) -> Self::Particle;
 
     /// Perform a meta action on the ParticleSystem.
+    /// 
+    /// # Example
+    /// 
+    /// Change the spawner's transform matrix when `GlobalTransform` is changed.
+    /// 
+    /// ```
+    /// # /*
+    /// fn apply_meta(&mut self, command: &dyn Any) {
+    ///     if let Some(transform) = command.downcast_ref::<GlobalTransform>() {
+    ///         self.transform_matrix = (*transform).into();
+    ///     }
+    /// }
+    /// 
+    /// fn system_sync_transform_with_emitter(
+    ///     mut query: Query<(&mut ParticleInstance, &GlobalTransform), Changed<GlobalTransform>>
+    /// ) {
+    ///     for (mut particle, transform) in query {
+    ///         particle.apply_meta(transform);
+    ///     }
+    /// }
+    /// # */
+    /// ```
     #[allow(unused_variables)]
-    fn apply_command(&mut self, command: &dyn Any) {}
+    fn apply_meta(&mut self, command: &dyn Any) {}
 
     /// Downcast into a [`SubParticleSystem`].
     fn as_sub_particle_system(&mut self) -> Option<&mut dyn ErasedSubParticleSystem> {
@@ -286,8 +326,8 @@ pub trait ErasedParticleSystem: Send + Sync {
         events: &mut ParticleEventBuffer,
     );
     fn spawn_particle_buffer(&self) -> ParticleBuffer;
-    fn apply_command(&mut self, command: &dyn Any);
-    fn extract(&self, buffer: &ParticleBuffer) -> ExtractedParticleBuffer;
+    fn apply_meta(&mut self, command: &dyn Any);
+    fn extract(&self, buffer: &ParticleBuffer, transform: &GlobalTransform, vec: &mut Vec<ExtractedParticle>);
     fn as_sub_particle_system(&mut self) -> Option<&mut dyn ErasedSubParticleSystem>;
     fn as_event_particle_system(&mut self) -> Option<&mut dyn ErasedEventParticleSystem>;
 }
@@ -467,18 +507,23 @@ where
     }
 
     /// Perform a meta action on the ParticleSystem
-    fn apply_command(&mut self, command: &dyn Any) {
-        ParticleSystem::apply_command(self, command)
+    fn apply_meta(&mut self, command: &dyn Any) {
+        ParticleSystem::apply_meta(self, command)
     }
 
-    fn extract(&self, buffer: &ParticleBuffer) -> ExtractedParticleBuffer {
-        ExtractedParticleBuffer(
+    fn extract(&self, buffer: &ParticleBuffer, transform: &GlobalTransform, vec: &mut Vec<ExtractedParticle>) {
+        vec.clear();
+        vec.extend(
             buffer
                 .get::<T::Particle>()
                 .iter()
                 .filter(|x| !x.is_expired())
                 .map(|x| {
-                    let transform = x.get_transform().compute_matrix();
+                    let transform = if T::WORLD_SPACE {
+                        x.get_transform().compute_matrix()
+                    } else {
+                        transform.mul_transform(x.get_transform()).compute_matrix()
+                    };
                     ExtractedParticle {
                         index: x.get_index(),
                         lifetime: x.get_lifetime(),
@@ -490,7 +535,6 @@ where
                         transform_z: transform.row(2),
                     }
                 })
-                .collect(),
         )
     }
 
@@ -509,12 +553,18 @@ impl Debug for dyn ErasedParticleSystem {
     }
 }
 
-impl ExtractComponent for ParticleInstance {
-    type QueryData = (&'static ParticleInstance, &'static ParticleBuffer);
+impl ExtractComponent for ExtractedParticleBuffer {
+    type QueryData = (&'static ParticleInstance, &'static ParticleBuffer, &'static GlobalTransform);
     type QueryFilter = ();
     type Out = ExtractedParticleBuffer;
 
-    fn extract_component((system, buffer): QueryItem<'_, Self::QueryData>) -> Option<Self::Out> {
-        Some(system.extract(buffer))
+    fn extract_component((system, buffer, transform): QueryItem<'_, Self::QueryData>) -> Option<Self::Out> {
+        let mut lock = buffer.extracted_allocation.lock().unwrap();
+        if let Some(vec) = Arc::get_mut(&mut lock) {
+            system.extract(buffer, transform, vec);
+            Some(ExtractedParticleBuffer(lock.clone()))
+        } else {
+            None
+        }
     }
 }

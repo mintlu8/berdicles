@@ -3,7 +3,7 @@
 use std::{marker::PhantomData, mem::size_of};
 
 use bevy::{
-    core_pipeline::core_3d::Transparent3d,
+    core_pipeline::core_3d::{AlphaMask3d, Opaque3d, Transparent3d},
     ecs::system::{lifetimeless::SRes, SystemParamItem},
     pbr::{
         MeshPipeline, MeshPipelineKey, RenderMaterialInstances, RenderMeshInstances,
@@ -48,11 +48,13 @@ impl<M: Material> Plugin for ParticleMaterialPlugin<M> {
         ));
         app.sub_app_mut(RenderApp)
             .add_render_command::<Transparent3d, RenderParticles<M>>()
+            .add_render_command::<Opaque3d, RenderParticles<M>>()
+            .add_render_command::<AlphaMask3d, RenderParticles<M>>()
             .init_resource::<SpecializedMeshPipelines<ParticlePipeline<M>>>()
             .add_systems(
                 Render,
                 (
-                    queue_custom::<M>.in_set(RenderSet::QueueMeshes),
+                    queue_particles::<M>.in_set(RenderSet::QueueMeshes),
                     prepare_instance_buffers.in_set(RenderSet::PrepareResources),
                 ),
             );
@@ -100,7 +102,7 @@ impl<M: Material> RenderAsset for PreparedParticle<M> {
     }
 }
 
-fn queue_custom<M: Material>(
+fn queue_particles<M: Material>(
     transparent_3d_draw_functions: Res<DrawFunctions<Transparent3d>>,
     custom_pipeline: Res<ParticlePipeline<M>>,
     msaa: Res<Msaa>,
@@ -272,7 +274,7 @@ type RenderParticles<M> = (
     SetMeshViewBindGroup<0>,
     SetMeshBindGroup<1>,
     SetParticleBindGroup<M, 2>,
-    DrawParticlesInstanced<M>,
+    DrawParticlesInstanced,
 );
 
 pub struct SetParticleBindGroup<M: Material, const I: usize>(PhantomData<M>);
@@ -307,9 +309,9 @@ impl<P: PhaseItem, M: Material, const I: usize> RenderCommand<P> for SetParticle
     }
 }
 
-struct DrawParticlesInstanced<M: Material>(PhantomData<M>);
+struct DrawParticlesInstanced;
 
-impl<P: PhaseItem, M: Material> RenderCommand<P> for DrawParticlesInstanced<M> {
+impl<P: PhaseItem> RenderCommand<P> for DrawParticlesInstanced {
     type Param = (
         Res<'static, RenderAssets<GpuMesh>>,
         Res<'static, RenderMeshInstances>,

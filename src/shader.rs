@@ -39,10 +39,7 @@ const VERTEX_FN: &str = stringify!(
         var x = dot(vec4(vertex.position, 1.0), vertex.transform_x);
         var y = dot(vec4(vertex.position, 1.0), vertex.transform_y);
         var z = dot(vec4(vertex.position, 1.0), vertex.transform_z);
-        out.clip_position = mesh_position_local_to_clip(
-            get_world_from_local(0u),
-            vec4(x, y, z, 1.0)
-        );
+        out.clip_position = position_world_to_clip(vec3(x, y, z));
         out.id = vertex.id;
         out.lifetime = vertex.lifetime;
         out.fac = vertex.fac;
@@ -66,15 +63,19 @@ const FRAGMENT_FN: &str = stringify!(
 );
 
 pub static SHADER_VERTEX: &str = const_format::concatcp!(
-    "#import bevy_pbr::mesh_functions::{get_world_from_local, mesh_position_local_to_clip}\n",
+    "#import bevy_pbr::mesh_functions::get_world_from_local\n",
+    "#import bevy_pbr::view_transformations::position_world_to_clip,\n",
     VERTEX,
     VERTEX_OUT,
     VERTEX_FN
 );
 
-pub static SHADER_FRAGMENT: &str = const_format::concatcp!(VERTEX_OUT, FRAGMENT_FN);
+pub static SHADER_FRAGMENT: &str = const_format::concatcp!(
+    VERTEX_OUT, 
+    FRAGMENT_FN
+);
 
-pub const fn weak_from_str(s: &str) -> Handle<Shader> {
+const fn weak_from_str(s: &str) -> Handle<Shader> {
     if s.len() > 16 {
         panic!()
     }
