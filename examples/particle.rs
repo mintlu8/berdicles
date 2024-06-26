@@ -2,6 +2,7 @@
 //! The scene includes a patterned texture and a rotation for visualizing the normals and UVs.
 
 use berdicle::{
+    util::{random_cone, transform_from_ddt},
     ExpirationState, Particle, ParticleInstance, ParticlePlugin, ParticleSystem,
     ParticleSystemBundle, StandardParticle,
 };
@@ -56,9 +57,8 @@ impl Particle for MyParticle {
     }
 
     fn get_transform(&self) -> Transform {
-        Transform::from_translation(
-            Vec2::from_angle(self.seed * PI * 2.).extend(0.) * self.life_time,
-        )
+        let f = |t| random_cone(Vec3::Y, f32::to_radians(30.), self.seed) * t * 2.;
+        transform_from_ddt(f, self.life_time + 1.)
     }
 
     fn get_color(&self) -> Srgba {
@@ -110,6 +110,7 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
     mut materials2: ResMut<Assets<StandardParticle>>,
 ) {
     commands.spawn(TextBundle {
@@ -119,11 +120,14 @@ fn setup(
     commands.spawn(ParticleSystemBundle {
         particle_system: ParticleInstance::new(MySpawner(0.)),
         mesh: meshes.add(
-            Cone {
-                radius: 0.5,
-                height: 0.5,
-            }
-            .mesh(),
+            Mesh::from(
+                Cone {
+                    radius: 0.5,
+                    height: 0.5,
+                }
+                .mesh(),
+            )
+            .rotated_by(Quat::from_rotation_x(-PI / 2.0)),
         ),
         material: materials2.add(StandardParticle {
             base_color: LinearRgba::new(2., 2., 2., 1.),
@@ -144,8 +148,16 @@ fn setup(
         ..default()
     });
 
+    // ground plane
+    commands.spawn(PbrBundle {
+        mesh: meshes.add(Plane3d::default().mesh().size(50.0, 50.0).subdivisions(10)),
+        material: materials.add(StandardMaterial::from_color(Srgba::GREEN)),
+        transform: Transform::from_xyz(0., 0., 0.),
+        ..default()
+    });
+
     commands.spawn(Camera3dBundle {
-        transform: Transform::from_xyz(0.0, 7., 50.0).looking_at(Vec3::new(0., 0., 0.), Vec3::Y),
+        transform: Transform::from_xyz(0.0, 7., 30.0).looking_at(Vec3::new(0., 0., 0.), Vec3::Y),
         ..default()
     });
 }

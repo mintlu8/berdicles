@@ -20,6 +20,7 @@ fn validate<T>() {
     }
 }
 
+/// Strategy for cleaning up particle buffers.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum ParticleBufferStrategy {
     /// Move alive particles to the start of the buffer.
@@ -49,6 +50,7 @@ impl Default for Align16MaybeUninit {
     }
 }
 
+/// Instance buffer of a particle.
 #[derive(Debug, Clone, Copy, Zeroable, Pod)]
 #[repr(C)]
 pub struct ExtractedParticle {

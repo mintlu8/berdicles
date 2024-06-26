@@ -127,7 +127,7 @@ impl TrailBuffer for Trail {
     }
 
     fn build_trail(&self, mesh: &mut Mesh) {
-        TrailMeshBuilder::new(mesh).build_mesh(
+        TrailMeshBuilder::new(mesh).build_plane(
             self.0.iter().map(|x| (x.position, x.tangent, x.width)),
             0.0..1.0,
         )
@@ -174,7 +174,7 @@ impl ParticleSystem for MainSpawner {
 
     fn as_trail_particle_system(
         &mut self,
-    ) -> Option<&mut dyn berdicle::trail::ErasedTrailParticleSystem> {
+    ) -> Option<&mut dyn berdicle::trail::TrailParticleSystem> {
         Some(self)
     }
 }

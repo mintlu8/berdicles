@@ -31,6 +31,10 @@ use crate::{
     ExtractedParticle, ExtractedParticleBuffer,
 };
 
+/// Add particle rendering pipeline for a [`Material`].
+///
+/// You should **NOT** add the corresponding `MaterialPlugin`,
+/// as `ParticleSystemBundle` is also a valid `MaterialMeshBundle`.
 #[derive(Clone)]
 pub struct ParticleMaterialPlugin<M: Material>(PhantomData<M>);
 

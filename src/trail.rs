@@ -1,3 +1,5 @@
+//! Module for rendering trails.
+
 use std::ops::Range;
 
 use bevy::{
@@ -13,6 +15,9 @@ use bevy::{
 
 use crate::{Particle, ParticleBuffer, ParticleInstance, ParticleSystem};
 
+/// A buffer of vertices on a curve.
+///
+/// Typically implemented as a [`RingBuffer`](crate::RingBuffer) of a particle like type.
 pub trait TrailBuffer: Copy + Send + Sync + 'static {
     fn update(&mut self, dt: f32);
     fn expired(&self) -> bool;
@@ -29,6 +34,9 @@ pub trait TrailBuffer: Copy + Send + Sync + 'static {
     }
 }
 
+/// [`Particle`] that contains a [`TrailBuffer`] and can be rendered as a mesh.
+///
+/// You might find [`RingBuffer`](crate::RingBuffer) useful in implementing [`TrailBuffer`].
 pub trait TrailedParticle: Particle {
     /// Usually a fixed sized ring buffer of points that constructs a mesh.
     type TrailBuffer: TrailBuffer;
@@ -37,12 +45,13 @@ pub trait TrailedParticle: Particle {
     fn as_trail_buffer_mut(&mut self) -> &mut Self::TrailBuffer;
 }
 
-pub trait ErasedTrailParticleSystem {
+/// ParticleSystem with [`Particle`] as a [`TrailedParticle`].
+pub trait TrailParticleSystem {
     fn default_mesh(&self) -> Mesh;
     fn build_trail(&self, buffer: &ParticleBuffer, mesh: &mut Mesh);
 }
 
-impl<T> ErasedTrailParticleSystem for T
+impl<T> TrailParticleSystem for T
 where
     T: ParticleSystem<Particle: TrailedParticle>,
 {
@@ -65,6 +74,7 @@ where
     }
 }
 
+// Removed items but preserve allocation.
 fn clean_mesh(mesh: &mut Mesh) {
     match mesh.indices_mut() {
         Some(Indices::U16(indices)) => indices.clear(),
@@ -101,6 +111,7 @@ fn clean_mesh(mesh: &mut Mesh) {
 #[derive(Debug, Component)]
 pub struct TrailMeshOf(pub Entity);
 
+/// System for rendering trails.
 pub fn trail_rendering(
     mut meshes: ResMut<Assets<Mesh>>,
     mut particles: Query<(&mut ParticleInstance, &mut ParticleBuffer), Without<Camera>>,
@@ -152,7 +163,7 @@ impl TrailMeshBuilder<'_> {
     /// Build a row of faces from a stream of points.
     ///
     /// The inputs are, in order, `(position, tangent, width)`.
-    pub fn build_mesh(
+    pub fn build_plane(
         &mut self,
         iter: impl IntoIterator<Item = (Vec3, Vec3, f32)>,
         uv_range: Range<f32>,

@@ -34,7 +34,7 @@ mod buffer;
 pub mod trail;
 pub mod util;
 pub use buffer::*;
-use trail::{trail_rendering, ErasedTrailParticleSystem};
+use trail::{trail_rendering, TrailParticleSystem};
 mod noop;
 mod ring_buffer;
 pub use ring_buffer::RingBuffer;
@@ -146,7 +146,7 @@ impl ExpirationState {
     }
 }
 
-/// An [`Particle`]. Must be [`Copy`] and have alignment less than `16`.
+/// A [`Particle`]. Must be [`Copy`] and have alignment less than `16`.
 pub trait Particle: Copy + 'static {
     /// Obtain the seed used to generate the particle.
     fn get_seed(&self) -> f32;
@@ -207,6 +207,7 @@ pub trait Particle: Copy + 'static {
     }
 }
 
+/// A particle spawner type.
 pub trait ParticleSystem {
     /// If true, use par_iter. Should not be set on smaller particle systems.
     ///
@@ -311,7 +312,7 @@ pub trait ParticleSystem {
     }
 
     /// Downcast into a [`ErasedTrailParticleSystem`], requires `Self::Particle` to be a [`TrailedParticle`](trail::TrailedParticle).
-    fn as_trail_particle_system(&mut self) -> Option<&mut dyn ErasedTrailParticleSystem> {
+    fn as_trail_particle_system(&mut self) -> Option<&mut dyn TrailParticleSystem> {
         None
     }
 }
@@ -338,7 +339,7 @@ pub trait ErasedParticleSystem: Send + Sync {
     fn as_sub_particle_system(&mut self) -> Option<&mut dyn ErasedSubParticleSystem>;
     fn as_event_particle_system(&mut self) -> Option<&mut dyn ErasedEventParticleSystem>;
     /// Downcast into a [`ErasedTrailParticleSystem`];
-    fn as_trail_particle_system(&mut self) -> Option<&mut dyn ErasedTrailParticleSystem>;
+    fn as_trail_particle_system(&mut self) -> Option<&mut dyn TrailParticleSystem>;
 }
 
 /// Component form of a type erased [`ParticleSystem`].
@@ -511,7 +512,7 @@ where
         ParticleSystem::as_event_particle_system(self)
     }
 
-    fn as_trail_particle_system(&mut self) -> Option<&mut dyn ErasedTrailParticleSystem> {
+    fn as_trail_particle_system(&mut self) -> Option<&mut dyn TrailParticleSystem> {
         ParticleSystem::as_trail_particle_system(self)
     }
 }
