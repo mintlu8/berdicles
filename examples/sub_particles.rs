@@ -2,8 +2,9 @@
 //! The scene includes a patterned texture and a rotation for visualizing the normals and UVs.
 
 use berdicle::{
-    util::transform_from_ddt, ErasedSubParticleSystem, ExpirationState, Particle, ParticleInstance,
-    ParticlePlugin, ParticleSystem, ParticleSystemBundle, StandardParticle, SubParticleSystem,
+    util::{random_circle, transform_from_ddt},
+    ErasedSubParticleSystem, ExpirationState, Particle, ParticleInstance, ParticlePlugin,
+    ParticleSystem, ParticleSystemBundle, StandardParticle, SubParticleSystem,
 };
 use bevy::{
     diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin},
@@ -126,7 +127,7 @@ impl Particle for TrailParticle {
     fn get_transform(&self) -> Transform {
         let point = self
             .origin
-            .transform_point(Vec3::new(0., self.life_time, 0.));
+            .transform_point(random_circle(self.seed).extend(2.) * self.life_time);
         self.origin.with_translation(point)
     }
 
@@ -209,18 +210,19 @@ fn setup(
         .spawn(ParticleSystemBundle {
             particle_system: ParticleInstance::new(MainSpawner(0.)),
             mesh: meshes.add(
-                Cone {
-                    radius: 0.5,
-                    height: 0.5,
-                }
-                .mesh(),
+                Mesh::from(
+                    Cone {
+                        radius: 0.5,
+                        height: 0.5,
+                    }
+                    .mesh(),
+                )
+                .rotated_by(Quat::from_rotation_x(-PI / 2.0)),
             ),
             material: materials2.add(StandardParticle {
                 base_color: LinearRgba::new(2., 2., 2., 1.),
                 texture: images.add(uv_debug_texture()),
             }),
-            transform: Transform::from_xyz(10., 10., 10.)
-                .with_rotation(Quat::from_rotation_x(f32::to_radians(90.))),
             ..Default::default()
         })
         .id();
@@ -233,8 +235,6 @@ fn setup(
                 base_color: LinearRgba::new(2., 2., 2., 1.),
                 texture: images.add(uv_debug_texture()),
             }),
-            transform: Transform::from_xyz(10., 10., 10.)
-                .with_rotation(Quat::from_rotation_x(f32::to_radians(90.))),
             ..Default::default()
         }
         .parented(root),
@@ -244,7 +244,7 @@ fn setup(
     commands.spawn(PbrBundle {
         mesh: meshes.add(Plane3d::default().mesh().size(50.0, 50.0).subdivisions(10)),
         material: materials.add(StandardMaterial::from_color(Srgba::GREEN)),
-        transform: Transform::from_xyz(0., -8., 0.),
+        transform: Transform::from_xyz(0., 0., 0.),
         ..default()
     });
 

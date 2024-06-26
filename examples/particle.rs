@@ -110,7 +110,6 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
     mut materials2: ResMut<Assets<StandardParticle>>,
 ) {
     commands.spawn(TextBundle {
@@ -130,8 +129,6 @@ fn setup(
             base_color: LinearRgba::new(2., 2., 2., 1.),
             texture: images.add(uv_debug_texture()),
         }),
-        transform: Transform::from_xyz(10., 10., 10.)
-            .with_rotation(Quat::from_rotation_x(f32::to_radians(90.))),
         ..Default::default()
     });
 
@@ -144,14 +141,6 @@ fn setup(
             ..default()
         },
         transform: Transform::from_xyz(8.0, 16.0, 8.0),
-        ..default()
-    });
-
-    // ground plane
-    commands.spawn(PbrBundle {
-        mesh: meshes.add(Plane3d::default().mesh().size(50.0, 50.0).subdivisions(10)),
-        material: materials.add(StandardMaterial::from_color(Srgba::GREEN)),
-        transform: Transform::from_xyz(0., -2., 0.),
         ..default()
     });
 

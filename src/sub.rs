@@ -63,10 +63,10 @@ pub trait SubParticleSystem: ParticleSystem {
     type Parent: Particle;
 
     /// Determines how many particles to spawn in a frame **per particle**.
-    /// 
+    ///
     /// You might want to keep track of this on a field in the parent's particle.
     fn spawn_step_sub(&mut self, parent: &mut Self::Parent, dt: f32) -> usize;
- 
+
     /// Convert a random seed into a particle with parent information.
     fn into_sub_particle(parent: &Self::Parent, seed: f32) -> Self::Particle;
 }

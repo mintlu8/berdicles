@@ -70,10 +70,7 @@ pub static SHADER_VERTEX: &str = const_format::concatcp!(
     VERTEX_FN
 );
 
-pub static SHADER_FRAGMENT: &str = const_format::concatcp!(
-    VERTEX_OUT, 
-    FRAGMENT_FN
-);
+pub static SHADER_FRAGMENT: &str = const_format::concatcp!(VERTEX_OUT, FRAGMENT_FN);
 
 const fn weak_from_str(s: &str) -> Handle<Shader> {
     if s.len() > 16 {

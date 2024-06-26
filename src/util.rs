@@ -2,11 +2,18 @@
 
 use std::f32::consts::PI;
 
-use bevy::{math::Vec3, transform::components::Transform};
+use bevy::{
+    math::{Vec2, Vec3},
+    transform::components::Transform,
+};
 
 /// Create a pseudo-random `f32` from another `f32`.
 pub fn next_seed(seed: f32) -> f32 {
     fastrand::Rng::with_seed(seed.to_bits() as u64).f32()
+}
+/// Create a random 3d unit vector.
+pub fn random_circle(seed: f32) -> Vec2 {
+    Vec2::from_angle(seed * (2. * PI))
 }
 
 /// Create a random 3d unit vector.

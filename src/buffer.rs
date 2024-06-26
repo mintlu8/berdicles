@@ -1,18 +1,35 @@
 use std::{
-    any::{type_name, TypeId},
+    any::{type_name, Any, TypeId},
     mem::{align_of, size_of, MaybeUninit},
-    slice, sync::{Arc, Mutex},
+    ops::Range,
+    slice,
+    sync::{Arc, Mutex},
 };
 
 use bevy::{math::Vec4, prelude::Component};
 use bytemuck::{Pod, Zeroable};
 
-use crate::Particle;
+use crate::{
+    trail::{TrailBuffer, TrailedParticle},
+    Particle,
+};
 
 fn validate<T>() {
     if !matches!(align_of::<T>(), 1 | 2 | 4 | 8 | 16) {
         panic!("Bad alignment for {}.", type_name::<T>())
     }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ParticleBufferStrategy {
+    /// Move alive particles to the start of the buffer.
+    #[default]
+    Retain,
+    /// Ignores dead particles when iterating.
+    ///
+    /// Should be used if lifetimes of particles are constant,
+    /// might be awful otherwise.
+    RingBuffer,
 }
 
 /// [`MaybeUninit`] with alignment and size `16`.
@@ -87,7 +104,9 @@ pub struct ParticleBuffer {
     /// Ring: number of particles initialized, never goes down.
     pub(crate) ring_capacity: usize,
     /// Allocation of extracted particles on the render world.
-    pub(crate) extracted_allocation: Mutex<Arc<Vec<ExtractedParticle>>>
+    pub(crate) extracted_allocation: Mutex<Arc<Vec<ExtractedParticle>>>,
+    /// Type of this should be `Vec<Trail>`.
+    pub(crate) detached_trails: Option<Box<dyn Any + Send + Sync>>,
 }
 
 impl ParticleBuffer {
@@ -105,7 +124,7 @@ impl ParticleBuffer {
     pub fn new_retain<T: Particle>(nominal_capacity: usize) -> Self {
         validate::<T>();
         let real_capacity = (nominal_capacity * size_of::<T>() + 15) / 16;
-        let capacity = real_capacity / size_of::<T>();
+        let capacity = real_capacity * 16 / size_of::<T>();
         Self {
             particle_type: ParticleBufferType::Retain(TypeId::of::<T>()),
             buffer: vec![Align16MaybeUninit::uninit(); real_capacity].into(),
@@ -113,7 +132,8 @@ impl ParticleBuffer {
             capacity,
             ptr: 0,
             ring_capacity: 0,
-            extracted_allocation: Default::default()
+            extracted_allocation: Default::default(),
+            detached_trails: None,
         }
     }
 
@@ -121,7 +141,7 @@ impl ParticleBuffer {
     pub fn new_ring<T: Particle>(nominal_capacity: usize) -> Self {
         validate::<T>();
         let real_capacity = (nominal_capacity * size_of::<T>() + 15) / 16;
-        let capacity = real_capacity / size_of::<T>();
+        let capacity = real_capacity * 16 / size_of::<T>();
         Self {
             particle_type: ParticleBufferType::RingBuffer(TypeId::of::<T>()),
             buffer: vec![Align16MaybeUninit::uninit(); real_capacity].into(),
@@ -129,7 +149,8 @@ impl ParticleBuffer {
             capacity,
             ptr: 0,
             ring_capacity: 0,
-            extracted_allocation: Default::default()
+            extracted_allocation: Default::default(),
+            detached_trails: None,
         }
     }
 
@@ -240,6 +261,56 @@ impl ParticleBuffer {
                     }
                 }
             }
+        }
+    }
+
+    pub fn detached<T: TrailBuffer>(&self) -> Option<&Vec<T>> {
+        self.detached_trails.as_ref().and_then(|x| x.downcast_ref())
+    }
+
+    /// Detach a slice of particles into trail rendering.
+    pub fn detach_slice<T: TrailedParticle>(&mut self, slice: Range<usize>) {
+        let buf = match self.particle_type {
+            ParticleBufferType::Uninit => panic!("Type ID mismatch!"),
+            ParticleBufferType::Retain(id) => {
+                if id != TypeId::of::<T>() {
+                    panic!("Type ID mismatch!")
+                }
+                unsafe { slice::from_raw_parts(self.buffer.as_ptr() as *const T, self.len) }
+            }
+            ParticleBufferType::RingBuffer(id) => {
+                if id != TypeId::of::<T>() {
+                    panic!("Type ID mismatch!")
+                }
+                unsafe {
+                    slice::from_raw_parts(self.buffer.as_ptr() as *const T, self.ring_capacity)
+                }
+            }
+        };
+        if let Some(trails) = self
+            .detached_trails
+            .as_mut()
+            .and_then(|x| x.downcast_mut::<Vec<T::TrailBuffer>>())
+        {
+            trails.extend(buf[slice].iter().map(|x| x.as_trail_buffer()));
+        } else {
+            self.detached_trails = Some(Box::new(Vec::from_iter(
+                buf[slice].iter().map(|x| x.as_trail_buffer())
+            )))
+        }
+    }
+
+    /// Update detached trails, this must be added manually to `update` of a `ParticleSystem` if needed.
+    pub fn update_detached<T: TrailedParticle>(&mut self, dt: f32) {
+        if let Some(trails) = self
+            .detached_trails
+            .as_mut()
+            .and_then(|x| x.downcast_mut::<Vec<T::TrailBuffer>>())
+        {
+            trails.retain_mut(|x| {
+                x.update(dt);
+                !x.expired()
+            })
         }
     }
 }
