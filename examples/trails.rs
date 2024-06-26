@@ -3,7 +3,7 @@
 
 use berdicle::{
     trail::{TrailBuffer, TrailMeshBuilder, TrailMeshOf, TrailedParticle},
-    util::transform_from_ddt,
+    util::transform_from_derivative,
     ExpirationState, Particle, ParticleInstance, ParticlePlugin, ParticleSystem,
     ParticleSystemBundle, RingBuffer, StandardParticle,
 };
@@ -67,7 +67,7 @@ impl Particle for MainParticle {
             let xy: Vec2 = Vec2::from_angle(self.seed * PI * 4.) * t;
             Vec3::new(xy.x, z, xy.y)
         };
-        transform_from_ddt(f, self.life_time)
+        transform_from_derivative(f, self.life_time)
     }
 
     fn get_position(&self) -> Vec3 {

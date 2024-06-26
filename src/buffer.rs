@@ -266,8 +266,12 @@ impl ParticleBuffer {
         }
     }
 
-    pub fn detached<T: TrailBuffer>(&self) -> Option<&Vec<T>> {
-        self.detached_trails.as_ref().and_then(|x| x.downcast_ref())
+    /// Returns a reference to detached curves.
+    pub fn detached<T: TrailBuffer>(&self) -> Option<&[T]> {
+        self.detached_trails
+            .as_ref()
+            .and_then(|x| x.downcast_ref::<Vec<T>>())
+            .map(|x| x.as_ref())
     }
 
     /// Detach a slice of particles into trail rendering.

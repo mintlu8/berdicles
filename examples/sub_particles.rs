@@ -2,7 +2,7 @@
 //! The scene includes a patterned texture and a rotation for visualizing the normals and UVs.
 
 use berdicle::{
-    util::{random_circle, transform_from_ddt},
+    util::{random_circle, transform_from_derivative},
     ErasedSubParticleSystem, EventParticleSystem, ExpirationState, Particle, ParticleInstance,
     ParticlePlugin, ParticleSystem, ParticleSystemBundle, StandardParticle, SubParticleSystem,
 };
@@ -63,7 +63,7 @@ impl Particle for MainParticle {
             let xy: Vec2 = Vec2::from_angle(self.seed * PI * 4.) * t;
             Vec3::new(xy.x, z, xy.y)
         };
-        transform_from_ddt(f, self.life_time)
+        transform_from_derivative(f, self.life_time)
     }
 
     fn get_color(&self) -> Srgba {

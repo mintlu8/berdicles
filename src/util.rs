@@ -12,12 +12,12 @@ pub fn into_rng(seed: f32) -> fastrand::Rng {
     fastrand::Rng::with_seed((seed as f64 * u64::MAX as f64) as u64)
 }
 
-/// Create a random 3d unit vector.
+/// Create a random 2d unit vector.
 pub fn random_circle(seed: f32) -> Vec2 {
     Vec2::from_angle(seed * (2. * PI))
 }
 
-/// Create a random 3d unit vector.
+/// Create a random 2d vector inside a `r=1` circle.
 pub fn random_solid_circle(seed: f32) -> Vec2 {
     let mut rng = into_rng(seed);
     let r = rng.f32().sqrt();
@@ -51,7 +51,7 @@ pub fn random_sphere(seed: f32) -> Vec3 {
 }
 
 /// Place [`Transform`] on a curve while facing forward via derivatives.
-pub fn transform_from_ddt(mut f: impl FnMut(f32) -> Vec3, lifetime: f32) -> Transform {
+pub fn transform_from_derivative(mut f: impl FnMut(f32) -> Vec3, lifetime: f32) -> Transform {
     const SMOL_NUM: f32 = 0.001;
     let translation = f(lifetime);
     let next = f(lifetime + SMOL_NUM);

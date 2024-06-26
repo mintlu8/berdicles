@@ -2,7 +2,7 @@
 //! The scene includes a patterned texture and a rotation for visualizing the normals and UVs.
 
 use berdicle::{
-    util::{random_cone, transform_from_ddt},
+    util::{random_cone, transform_from_derivative},
     ExpirationState, Particle, ParticleInstance, ParticlePlugin, ParticleSystem,
     ParticleSystemBundle, StandardParticle,
 };
@@ -58,7 +58,7 @@ impl Particle for MyParticle {
 
     fn get_transform(&self) -> Transform {
         let f = |t| random_cone(Vec3::Y, f32::to_radians(30.), self.seed) * t * 2.;
-        transform_from_ddt(f, self.life_time + 1.)
+        transform_from_derivative(f, self.life_time + 1.)
     }
 
     fn get_color(&self) -> Srgba {
