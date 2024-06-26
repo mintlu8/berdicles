@@ -15,7 +15,7 @@ Non-features
 * GPU simulation.
 * SIMD and similar optimizations.
 
-Basically the crates trades some potential optimizations for expressiveness and iteration speed.
+Basically the crates trades some potential optimizations for expressiveness.
 
 ## Getting Started
 
@@ -23,9 +23,9 @@ Add a `ParticleSystemBundle`, which is a `MaterialMeshBundle` with a `ParticleIn
 
 * Huh?
 
-First we need to add `ParticleMaterialPlugin` and not `MaterialPlugin` which sets up a different pipeline.
+First we need to add `ParticleMaterialPlugin`, not `MaterialPlugin`, which sets up a different render pipeline.
 This uses the mesh as the particle shape and the shader for instancing. The `StandardParticle` is already setup
-in this crate, but you can define your own by referencing this crate's source code.
+in this crate, but you can define your own `Material` by referencing this shader's source code.
 
 To create a `ParticleInstance` we need a `ParticleSystem` trait implementor and a `Particle` that it spawns.
 
@@ -35,6 +35,8 @@ To create a `ParticleInstance` we need a `ParticleSystem` trait implementor and 
 
 * Add `ParticleParent(Entity)` to point to a parent
 * Add the downcast function `as_sub_particle_system` to your `ParticleSystem` implementation.
+
+Yes you can chain these infinitely.
 
 ## Event Particle Systems
 
