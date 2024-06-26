@@ -3,8 +3,8 @@
 
 use berdicle::{
     util::{random_circle, transform_from_ddt},
-    ErasedSubParticleSystem, ExpirationState, Particle, ParticleInstance, ParticlePlugin,
-    ParticleSystem, ParticleSystemBundle, StandardParticle, SubParticleSystem,
+    ErasedSubParticleSystem, EventParticleSystem, ExpirationState, Particle, ParticleInstance,
+    ParticlePlugin, ParticleSystem, ParticleSystemBundle, StandardParticle, SubParticleSystem,
 };
 use bevy::{
     diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin},
@@ -76,7 +76,7 @@ impl Particle for MainParticle {
 
     fn expiration_state(&self) -> ExpirationState {
         if self.life_time > 8.0 {
-            ExpirationState::Fizzle
+            ExpirationState::Explode
         } else {
             ExpirationState::None
         }
@@ -89,7 +89,7 @@ impl ParticleSystem for MainSpawner {
     type Particle = MainParticle;
 
     fn capacity(&self) -> usize {
-        10000
+        60
     }
 
     fn spawn_step(&mut self, time: f32) -> usize {
@@ -191,6 +191,79 @@ impl SubParticleSystem for ChildSpawner {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct CollisionParticle {
+    pub origin: Vec3,
+    pub seed: f32,
+    pub life_time: f32,
+}
+
+impl Particle for CollisionParticle {
+    fn get_seed(&self) -> f32 {
+        self.seed
+    }
+
+    fn get_lifetime(&self) -> f32 {
+        self.life_time
+    }
+
+    fn get_transform(&self) -> Transform {
+        let p = random_circle(self.seed);
+        Transform::from_translation(self.origin + Vec3::new(p.x, 1., p.y) * self.life_time * 12.)
+    }
+
+    fn update(&mut self, dt: f32) {
+        self.life_time += dt;
+    }
+
+    fn expiration_state(&self) -> ExpirationState {
+        if self.life_time > 1.0 {
+            ExpirationState::Explode
+        } else {
+            ExpirationState::None
+        }
+    }
+}
+
+pub struct CollisionSpawner;
+
+impl ParticleSystem for CollisionSpawner {
+    type Particle = CollisionParticle;
+
+    fn capacity(&self) -> usize {
+        100000
+    }
+
+    fn spawn_step(&mut self, _: f32) -> usize {
+        0
+    }
+
+    fn build_particle(&self, _: f32) -> Self::Particle {
+        unreachable!()
+    }
+
+    fn as_event_particle_system(&mut self) -> Option<&mut dyn berdicle::ErasedEventParticleSystem> {
+        Some(self)
+    }
+}
+
+impl EventParticleSystem for CollisionSpawner {
+    fn spawn_event(&mut self, parent: &berdicle::ParticleEvent) -> usize {
+        match parent.event {
+            berdicle::ParticleEventType::Explode => 12,
+            _ => 0,
+        }
+    }
+
+    fn into_sub_particle(parent: &berdicle::ParticleEvent, seed: f32) -> Self::Particle {
+        CollisionParticle {
+            origin: parent.position,
+            seed,
+            life_time: 0.,
+        }
+    }
+}
+
 const SHAPES_X_EXTENT: f32 = 14.0;
 const EXTRUSION_X_EXTENT: f32 = 16.0;
 const Z_EXTENT: f32 = 5.0;
@@ -207,24 +280,27 @@ fn setup(
         ..Default::default()
     });
     let root = commands
-        .spawn(ParticleSystemBundle {
-            particle_system: ParticleInstance::new(MainSpawner(0.)),
-            mesh: meshes.add(
-                Mesh::from(
-                    Cone {
-                        radius: 0.5,
-                        height: 0.5,
-                    }
-                    .mesh(),
-                )
-                .rotated_by(Quat::from_rotation_x(-PI / 2.0)),
-            ),
-            material: materials2.add(StandardParticle {
-                base_color: LinearRgba::new(2., 2., 2., 1.),
-                texture: images.add(uv_debug_texture()),
-            }),
-            ..Default::default()
-        })
+        .spawn(
+            ParticleSystemBundle {
+                particle_system: ParticleInstance::new(MainSpawner(0.)),
+                mesh: meshes.add(
+                    Mesh::from(
+                        Cone {
+                            radius: 0.5,
+                            height: 0.5,
+                        }
+                        .mesh(),
+                    )
+                    .rotated_by(Quat::from_rotation_x(-PI / 2.0)),
+                ),
+                material: materials2.add(StandardParticle {
+                    base_color: LinearRgba::new(2., 2., 2., 1.),
+                    texture: images.add(uv_debug_texture()),
+                }),
+                ..Default::default()
+            }
+            .with_events(),
+        )
         .id();
 
     commands.spawn(
@@ -232,7 +308,20 @@ fn setup(
             particle_system: ParticleInstance::new(ChildSpawner(0.)),
             mesh: meshes.add(Sphere::new(0.1).mesh()),
             material: materials2.add(StandardParticle {
-                base_color: LinearRgba::new(2., 2., 2., 1.),
+                base_color: LinearRgba::new(0., 2., 2., 1.),
+                texture: images.add(uv_debug_texture()),
+            }),
+            ..Default::default()
+        }
+        .parented(root),
+    );
+
+    commands.spawn(
+        ParticleSystemBundle {
+            particle_system: ParticleInstance::new(CollisionSpawner),
+            mesh: meshes.add(Cuboid::new(0.2, 0.2, 0.2).mesh()),
+            material: materials2.add(StandardParticle {
+                base_color: LinearRgba::new(2., 0., 0., 1.),
                 texture: images.add(uv_debug_texture()),
             }),
             ..Default::default()

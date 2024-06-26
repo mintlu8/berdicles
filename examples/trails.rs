@@ -8,10 +8,14 @@ use berdicle::{
     ParticleSystemBundle, RingBuffer, StandardParticle,
 };
 use bevy::{
-    diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, pbr::{NotShadowCaster, NotShadowReceiver}, prelude::*, render::{
+    diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin},
+    pbr::{NotShadowCaster, NotShadowReceiver},
+    prelude::*,
+    render::{
         render_asset::RenderAssetUsages,
         render_resource::{Extent3d, TextureDimension, TextureFormat},
-    }, window::PresentMode
+    },
+    window::PresentMode,
 };
 use std::f32::consts::PI;
 

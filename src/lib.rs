@@ -171,7 +171,9 @@ pub trait Particle: Copy + 'static {
         self.get_transform().forward().as_vec3()
     }
     /// Obtain the color of the particle.
-    fn get_color(&self) -> Srgba;
+    fn get_color(&self) -> Srgba {
+        Srgba::WHITE
+    }
 
     /// Advance time on this particle.
     fn update(&mut self, dt: f32);

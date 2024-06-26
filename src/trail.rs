@@ -85,15 +85,19 @@ fn clean_mesh(mesh: &mut Mesh) {
     } else {
         mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, Vec::<Vec3>::new())
     }
-    if let Some(VertexAttributeValues::Float32x2(uvs)) =
-        mesh.attribute_mut(Mesh::ATTRIBUTE_UV_0)
-    {
+    if let Some(VertexAttributeValues::Float32x2(uvs)) = mesh.attribute_mut(Mesh::ATTRIBUTE_UV_0) {
         uvs.clear()
     } else {
         mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, Vec::<Vec2>::new())
     }
 }
 
+/// Place this next to a [`MaterialMeshBundle`](bevy::pbr::MaterialMeshBundle)
+/// (or simply `Handle<Mesh>`) to render trails of a particle system.
+///
+/// # Tips
+/// * You can leave [`Handle<Mesh>`] at default as a new mesh will automatically be created.
+/// * Remember to set cull mode to `None`.
 #[derive(Debug, Component)]
 pub struct TrailMeshOf(pub Entity);
 
@@ -113,7 +117,7 @@ pub fn trail_rendering(
             clean_mesh(mesh);
             trail.build_trail(&buffer, mesh);
         };
-        
+
         if handle.id() == Handle::<Mesh>::default().id() {
             let mut mesh = trail.default_mesh();
             modify(&mut mesh);
@@ -131,6 +135,7 @@ pub fn trail_rendering(
     }
 }
 
+/// A Builder that generates a plane mesh representing a trail.
 pub struct TrailMeshBuilder<'t> {
     mesh: &'t mut Mesh,
     buffer: Vec<(Vec3, Vec3, f32)>,
@@ -144,6 +149,9 @@ impl TrailMeshBuilder<'_> {
         }
     }
 
+    /// Build a row of faces from a stream of points.
+    ///
+    /// The inputs are, in order, `(position, tangent, width)`.
     pub fn build_mesh(
         &mut self,
         iter: impl IntoIterator<Item = (Vec3, Vec3, f32)>,

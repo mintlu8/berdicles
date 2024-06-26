@@ -28,7 +28,8 @@ const VERTEX_OUT: &str = stringify!(
         @location(2) fac: f32,
         @location(3) seed: f32,
         @location(4) color: vec4<f32>,
-        @location(5) uv: vec2<f32>,
+        @location(5) normal: vec3<f32>,
+        @location(6) uv: vec2<f32>,
     };
 );
 
@@ -45,6 +46,7 @@ const VERTEX_FN: &str = stringify!(
         out.fac = vertex.fac;
         out.seed = vertex.seed;
         out.color = vertex.color;
+        out.normal = vertex.normal;
         out.uv = vertex.uv;
         return out;
     }

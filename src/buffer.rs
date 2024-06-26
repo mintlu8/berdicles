@@ -295,12 +295,12 @@ impl ParticleBuffer {
             trails.extend(buf[slice].iter().map(|x| x.as_trail_buffer()));
         } else {
             self.detached_trails = Some(Box::new(Vec::from_iter(
-                buf[slice].iter().map(|x| x.as_trail_buffer())
+                buf[slice].iter().map(|x| x.as_trail_buffer()),
             )))
         }
     }
 
-    /// Update detached trails, this must be added manually to `update` of a `ParticleSystem` if needed.
+    /// Update detached trails, this must be added manually to `on_update` of a `ParticleSystem` if needed.
     pub fn update_detached<T: TrailedParticle>(&mut self, dt: f32) {
         if let Some(trails) = self
             .detached_trails
