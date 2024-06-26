@@ -9,6 +9,7 @@ Expressive CPU particle system for the bevy engine.
 * Particles as emitters.
 * Particles trails.
 * Particle events.
+* Billboard particles.
 
 Non-features
 
@@ -54,6 +55,3 @@ We can render trails behind particles as mesh.
 * Add `on_update`, `detach_slice` and `as_trail_particle_system` to your `ParticleSystem` implementation.
 * Add `TrailMeshOf(Entity)` to a `MaterialMeshBundle` to render them.
 
-## Todo
-
-[ ] Billboard: Already doable with `apply_meta`, but an abstraction would be nice.

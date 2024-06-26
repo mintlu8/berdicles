@@ -36,11 +36,29 @@ use crate::{
 /// You should **NOT** add the corresponding `MaterialPlugin`,
 /// as `ParticleSystemBundle` is also a valid `MaterialMeshBundle`.
 #[derive(Clone)]
-pub struct ParticleMaterialPlugin<M: Material>(PhantomData<M>);
+pub struct ParticleMaterialPlugin<M: Material> {
+    pub cull_mode: Option<Face>,
+    p: PhantomData<M>,
+}
 
 impl<M: Material> Default for ParticleMaterialPlugin<M> {
     fn default() -> Self {
-        Self(PhantomData)
+        Self {
+            cull_mode: Some(Face::Back),
+            p: PhantomData,
+        }
+    }
+}
+
+impl<M: Material> ParticleMaterialPlugin<M> {
+    pub fn no_culling(mut self) -> Self {
+        self.cull_mode = None;
+        self
+    }
+
+    pub fn with_cull_mode(mut self, face: Face) -> Self {
+        self.cull_mode = Some(face);
+        self
     }
 }
 
@@ -66,7 +84,10 @@ impl<M: Material> Plugin for ParticleMaterialPlugin<M> {
 
     fn finish(&self, app: &mut App) {
         app.sub_app_mut(RenderApp)
-            .init_resource::<ParticlePipeline<M>>();
+            .init_resource::<ParticlePipeline<M>>()
+            .world_mut()
+            .resource_mut::<ParticlePipeline<M>>()
+            .cull_mode = self.cull_mode;
     }
 }
 /// Data prepared for a [`Material`] instance.
@@ -185,6 +206,7 @@ pub struct ParticlePipeline<M: Material> {
     vertex_shader: Handle<Shader>,
     fragment_shader: Handle<Shader>,
     material_layout: BindGroupLayout,
+    cull_mode: Option<Face>,
     p: PhantomData<M>,
 }
 
@@ -205,6 +227,7 @@ impl<M: Material> FromWorld for ParticlePipeline<M> {
                 ShaderRef::Path(path) => world.resource::<AssetServer>().load(path),
             },
             material_layout: M::bind_group_layout(render_device),
+            cull_mode: Some(Face::Back),
             p: PhantomData,
         }
     }
@@ -219,7 +242,7 @@ impl<M: Material> SpecializedMeshPipeline for ParticlePipeline<M> {
         layout: &MeshVertexBufferLayoutRef,
     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
         let mut descriptor = self.mesh_pipeline.specialize(key, layout)?;
-
+        descriptor.primitive.cull_mode = self.cull_mode;
         descriptor.vertex.shader = self.vertex_shader.clone();
         descriptor.vertex.buffers.push(VertexBufferLayout {
             array_stride: size_of::<ExtractedParticle>() as u64,

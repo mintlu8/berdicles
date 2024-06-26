@@ -57,3 +57,16 @@ pub fn transform_from_derivative(mut f: impl FnMut(f32) -> Vec3, lifetime: f32) 
     let next = f(lifetime + SMOL_NUM);
     Transform::from_translation(translation).looking_to(next - translation, Vec3::Y)
 }
+
+pub fn random_quat(seed: f32) -> Quat {
+    let mut rng = into_rng(seed);
+    let u1 = rng.f32();
+    let u2 = rng.f32();
+    let u3 = rng.f32();
+    Quat {
+        x: (1. - u1).sqrt() * (2. * PI * u2).sin(),
+        y: (1. - u1).sqrt() * (2. * PI * u2).cos(),
+        z: (u1).sqrt() * (2. * PI * u3).sin(),
+        w: (u1).sqrt() * (2. * PI * u3).cos(),
+    }
+}

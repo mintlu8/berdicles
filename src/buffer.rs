@@ -33,6 +33,7 @@ pub enum ParticleBufferStrategy {
     RingBuffer,
 }
 
+#[doc(hidden)]
 /// [`MaybeUninit`] with alignment and size `16`.
 #[derive(Debug, Clone, Copy)]
 #[repr(C, align(16))]

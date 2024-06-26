@@ -66,6 +66,17 @@ const FRAGMENT_FN: &str = stringify!(
     }
 );
 
+const DBG_FN: &str = stringify!(
+    @fragment
+    fn fragment(input: VertexOutput, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
+        if front {
+            return vec4(0.0, 0.0, 1.0, 0.0);
+        } else {
+            return vec4(1.0, 0.0, 0.0, 0.0);
+        }
+    }
+);
+
 pub static SHADER_VERTEX: &str = const_format::concatcp!(
     "#import bevy_pbr::mesh_functions::get_world_from_local\n",
     "#import bevy_pbr::view_transformations::position_world_to_clip,\n",
@@ -75,6 +86,8 @@ pub static SHADER_VERTEX: &str = const_format::concatcp!(
 );
 
 pub static SHADER_FRAGMENT: &str = const_format::concatcp!(VERTEX_OUT, FRAGMENT_FN);
+
+pub static SHADER_DBG: &str = const_format::concatcp!(VERTEX_OUT, DBG_FN);
 
 const fn weak_from_str(s: &str) -> Handle<Shader> {
     if s.len() > 16 {
@@ -92,3 +105,4 @@ const fn weak_from_str(s: &str) -> Handle<Shader> {
 
 pub static PARTICLE_VERTEX: Handle<Shader> = weak_from_str("berdicle/vert");
 pub static PARTICLE_FRAGMENT: Handle<Shader> = weak_from_str("berdicle/frag");
+pub static PARTICLE_DBG_FRAGMENT: Handle<Shader> = weak_from_str("berdicle/dbg");

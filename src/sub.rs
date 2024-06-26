@@ -113,7 +113,7 @@ impl Debug for dyn ErasedSubParticleSystem {
 }
 
 /// A [`ParticleSystem`] that spawns particles on parent's emitted events.
-/// 
+///
 /// You must add [`ParticleEventBuffer`] to the parent for this to function.
 pub trait EventParticleSystem: ParticleSystem {
     /// Returns how many to spawn in a burst on an event.

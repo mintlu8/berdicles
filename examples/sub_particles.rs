@@ -210,7 +210,10 @@ impl Particle for CollisionParticle {
 
     fn get_transform(&self) -> Transform {
         let p = random_circle(self.seed);
-        Transform::from_translation(self.origin + Vec3::new(p.x, 1., p.y) * self.life_time * 12.)
+        let z = (self.life_time - self.life_time * self.life_time) * 4.;
+        Transform::from_translation(
+            self.origin + Vec3::new(p.x, 0., p.y) * self.life_time * 4. + Vec3::new(0., z, 0.),
+        )
     }
 
     fn update(&mut self, dt: f32) {

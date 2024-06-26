@@ -9,18 +9,21 @@ use std::{
 };
 
 use bevy::{
-    app::{Plugin, Update},
+    app::{Plugin, PostUpdate, Update},
     asset::Assets,
     color::{ColorToComponents, Srgba},
     ecs::query::QueryItem,
-    math::Vec3,
+    math::{Quat, Vec3},
     prelude::{Component, Entity, IntoSystemConfigs, Query, Res},
     render::{
         extract_component::{ExtractComponent, ExtractComponentPlugin},
         render_resource::Shader,
     },
     time::Time,
-    transform::components::{GlobalTransform, Transform},
+    transform::{
+        components::{GlobalTransform, Transform},
+        systems::{propagate_transforms, sync_simple_transforms},
+    },
 };
 use noop::NoopParticleSystem;
 
@@ -39,6 +42,8 @@ use trail::{trail_rendering, TrailParticleSystem};
 mod noop;
 mod ring_buffer;
 pub use ring_buffer::RingBuffer;
+mod billboard;
+pub use billboard::*;
 
 /// Plugin for `berdicle`.
 ///
@@ -57,10 +62,21 @@ impl Plugin for ParticlePlugin {
             &shader::PARTICLE_FRAGMENT,
             Shader::from_wgsl(shader::SHADER_FRAGMENT, "berdicle/particle_fragment.wgsl"),
         );
+        app.world_mut().resource_mut::<Assets<Shader>>().insert(
+            &shader::PARTICLE_DBG_FRAGMENT,
+            Shader::from_wgsl(shader::SHADER_DBG, "berdicle/particle_dbg_fragment.wgsl"),
+        );
         app.add_plugins(ExtractComponentPlugin::<ExtractedParticleBuffer>::default());
         app.add_plugins(ParticleMaterialPlugin::<StandardParticle>::default());
+        app.add_plugins(ParticleMaterialPlugin::<DebugParticle>::default());
         app.add_systems(Update, particle_system);
         app.add_systems(Update, trail_rendering.after(particle_system));
+        app.add_systems(
+            PostUpdate,
+            billboard_system
+                .after(propagate_transforms)
+                .after(sync_simple_transforms),
+        );
     }
 }
 
@@ -343,6 +359,7 @@ pub trait ErasedParticleSystem: Send + Sync {
         &self,
         buffer: &ParticleBuffer,
         transform: &GlobalTransform,
+        billboard: Option<Quat>,
         vec: &mut Vec<ExtractedParticle>,
     );
     /// Downcast into a [`SubParticleSystem`];
@@ -482,10 +499,12 @@ where
         ParticleSystem::apply_meta(self, command)
     }
 
+    #[allow(clippy::collapsible_else_if)]
     fn extract(
         &self,
         buffer: &ParticleBuffer,
         transform: &GlobalTransform,
+        billboard: Option<Quat>,
         vec: &mut Vec<ExtractedParticle>,
     ) {
         vec.clear();
@@ -495,10 +514,26 @@ where
                 .iter()
                 .filter(|x| !x.is_expired())
                 .map(|x| {
-                    let transform = if T::WORLD_SPACE {
-                        x.get_transform().compute_matrix()
+                    let transform = if let Some(bb) = billboard {
+                        if T::WORLD_SPACE {
+                            x.get_transform().with_rotation(bb).compute_matrix()
+                        } else {
+                            let (scale, _, translation) = transform
+                                .mul_transform(x.get_transform())
+                                .to_scale_rotation_translation();
+                            Transform {
+                                translation,
+                                rotation: bb,
+                                scale,
+                            }
+                            .compute_matrix()
+                        }
                     } else {
-                        transform.mul_transform(x.get_transform()).compute_matrix()
+                        if T::WORLD_SPACE {
+                            x.get_transform().compute_matrix()
+                        } else {
+                            transform.mul_transform(x.get_transform()).compute_matrix()
+                        }
                     };
                     ExtractedParticle {
                         index: x.get_index(),
@@ -538,16 +573,17 @@ impl ExtractComponent for ExtractedParticleBuffer {
         &'static ParticleInstance,
         &'static ParticleBuffer,
         &'static GlobalTransform,
+        Option<&'static BillboardParticle>,
     );
     type QueryFilter = ();
     type Out = ExtractedParticleBuffer;
 
     fn extract_component(
-        (system, buffer, transform): QueryItem<'_, Self::QueryData>,
+        (system, buffer, transform, billboard): QueryItem<'_, Self::QueryData>,
     ) -> Option<Self::Out> {
         let mut lock = buffer.extracted_allocation.lock().unwrap();
         if let Some(vec) = Arc::get_mut(&mut lock) {
-            system.extract(buffer, transform, vec);
+            system.extract(buffer, transform, billboard.map(|x| x.0), vec);
             Some(ExtractedParticleBuffer(lock.clone()))
         } else {
             None

@@ -14,7 +14,7 @@ use bevy::{
 };
 
 use crate::{
-    shader::{PARTICLE_FRAGMENT, PARTICLE_VERTEX},
+    shader::{PARTICLE_DBG_FRAGMENT, PARTICLE_FRAGMENT, PARTICLE_VERTEX},
     sub::{ParticleEventBuffer, ParticleParent},
     ParticleBuffer, ParticleInstance,
 };
@@ -35,6 +35,19 @@ impl Material for StandardParticle {
     }
     fn fragment_shader() -> ShaderRef {
         ShaderRef::Handle(PARTICLE_FRAGMENT.clone())
+    }
+}
+
+/// [`Material`] that displays useful debug info of a particle.
+#[derive(Debug, Clone, Default, PartialEq, TypePath, Asset, AsBindGroup)]
+pub struct DebugParticle {}
+
+impl Material for DebugParticle {
+    fn vertex_shader() -> ShaderRef {
+        ShaderRef::Handle(PARTICLE_VERTEX.clone())
+    }
+    fn fragment_shader() -> ShaderRef {
+        ShaderRef::Handle(PARTICLE_DBG_FRAGMENT.clone())
     }
 }
 
