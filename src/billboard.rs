@@ -17,8 +17,8 @@ impl BillboardParticle {
     }
 }
 
-/// Marker component that selects [`Camera`] for billboard rendering. 
-/// 
+/// Marker component that selects [`Camera`] for billboard rendering.
+///
 /// Optional if only one camera existså.
 #[derive(Debug, Component)]
 pub struct BillboardCamera;
