@@ -1,5 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::type_complexity)]
+#![doc = include_str!("../README.md")]
 use std::{
     any::Any,
     fmt::Debug,
@@ -108,7 +109,7 @@ pub fn particle_system(
             let Ok((_, _, _, Some(parent), _)) = particles.get(*parent) else {
                 continue;
             };
-            sub.spawn_from_event(&mut buffer, parent);
+            sub.spawn_on_event(&mut buffer, parent);
         }
     }
 }
@@ -311,7 +312,7 @@ pub trait ParticleSystem {
         None
     }
 
-    /// Downcast into a [`ErasedTrailParticleSystem`], requires `Self::Particle` to be a [`TrailedParticle`](trail::TrailedParticle).
+    /// Downcast into a [`TrailParticleSystem`], requires `Self::Particle` to be a [`TrailedParticle`](trail::TrailedParticle).
     fn as_trail_particle_system(&mut self) -> Option<&mut dyn TrailParticleSystem> {
         None
     }
@@ -319,16 +320,24 @@ pub trait ParticleSystem {
 
 /// Type erased version of [`ParticleSystem`].
 pub trait ErasedParticleSystem: Send + Sync {
+    /// Obtain debug information.
+    ///
+    /// If not specified, `Debug` will only print a generic struct.
     fn as_debug(&self) -> &dyn Debug;
+    /// Returns [`ParticleSystem::WORLD_SPACE`].
     fn is_world_space(&self) -> bool;
+    /// Advance by time.
     fn update(&mut self, dt: f32, buffer: &mut ParticleBuffer);
+    /// Advance by time, write to an event buffer.
     fn update_with_event_buffer(
         &mut self,
         dt: f32,
         buffer: &mut ParticleBuffer,
         events: &mut ParticleEventBuffer,
     );
+    /// Create an empty [`ParticleBuffer`].
     fn spawn_particle_buffer(&self) -> ParticleBuffer;
+    /// Perform a meta action on the ParticleSystem.
     fn apply_meta(&mut self, command: &dyn Any);
     fn extract(
         &self,
@@ -336,9 +345,11 @@ pub trait ErasedParticleSystem: Send + Sync {
         transform: &GlobalTransform,
         vec: &mut Vec<ExtractedParticle>,
     );
+    /// Downcast into a [`SubParticleSystem`];
     fn as_sub_particle_system(&mut self) -> Option<&mut dyn ErasedSubParticleSystem>;
+    /// Downcast into a [`EventParticleSystem`];
     fn as_event_particle_system(&mut self) -> Option<&mut dyn ErasedEventParticleSystem>;
-    /// Downcast into a [`ErasedTrailParticleSystem`];
+    /// Downcast into a [`TrailParticleSystem`];
     fn as_trail_particle_system(&mut self) -> Option<&mut dyn TrailParticleSystem>;
 }
 
@@ -467,7 +478,6 @@ where
         }
     }
 
-    /// Perform a meta action on the ParticleSystem
     fn apply_meta(&mut self, command: &dyn Any) {
         ParticleSystem::apply_meta(self, command)
     }

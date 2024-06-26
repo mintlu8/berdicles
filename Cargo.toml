@@ -1,7 +1,17 @@
 [package]
-name = "berdicle"
-version = "0.1.0"
+name = "berdicles"
+version = "0.0.1"
 edition = "2021"
+
+authors = ["Mincong Lu <mintlux667@gmail.com>"]
+license = "MIT OR Apache-2.0"
+
+readme = "README.md"
+repository = "https://github.com/mintlu8/berdicles"
+description = """
+Expressive CPU particle system for the bevy engine.
+"""
+keywords = ["bevy", "particle", "particles"]
 
 [dependencies]
 bevy = "0.14.0-rc.3"

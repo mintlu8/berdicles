@@ -1,10 +1,11 @@
 //! This example demonstrates the built-in 3d shapes in Bevy.
 //! The scene includes a patterned texture and a rotation for visualizing the normals and UVs.
 
-use berdicle::{
+use berdicles::{
     util::{random_circle, transform_from_derivative},
-    ErasedSubParticleSystem, EventParticleSystem, ExpirationState, Particle, ParticleInstance,
-    ParticlePlugin, ParticleSystem, ParticleSystemBundle, StandardParticle, SubParticleSystem,
+    ErasedEventParticleSystem, ErasedSubParticleSystem, EventParticleSystem, ExpirationState,
+    Particle, ParticleEvent, ParticleEventType, ParticleInstance, ParticlePlugin, ParticleSystem,
+    ParticleSystemBundle, StandardParticle, SubParticleSystem,
 };
 use bevy::{
     diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin},
@@ -242,20 +243,20 @@ impl ParticleSystem for CollisionSpawner {
         unreachable!()
     }
 
-    fn as_event_particle_system(&mut self) -> Option<&mut dyn berdicle::ErasedEventParticleSystem> {
+    fn as_event_particle_system(&mut self) -> Option<&mut dyn ErasedEventParticleSystem> {
         Some(self)
     }
 }
 
 impl EventParticleSystem for CollisionSpawner {
-    fn spawn_event(&mut self, parent: &berdicle::ParticleEvent) -> usize {
+    fn spawn_on_event(&mut self, parent: &ParticleEvent) -> usize {
         match parent.event {
-            berdicle::ParticleEventType::Explode => 12,
+            ParticleEventType::Explode => 12,
             _ => 0,
         }
     }
 
-    fn into_sub_particle(parent: &berdicle::ParticleEvent, seed: f32) -> Self::Particle {
+    fn into_sub_particle(parent: &ParticleEvent, seed: f32) -> Self::Particle {
         CollisionParticle {
             origin: parent.position,
             seed,

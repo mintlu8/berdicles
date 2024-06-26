@@ -19,12 +19,15 @@ use crate::{Particle, ParticleBuffer, ParticleInstance, ParticleSystem};
 ///
 /// Typically implemented as a [`RingBuffer`](crate::RingBuffer) of a particle like type.
 pub trait TrailBuffer: Copy + Send + Sync + 'static {
+    /// Advance by time.
     fn update(&mut self, dt: f32);
+    /// Returns true if expired, must be ordered by lifetime with items within the same trail.
     fn expired(&self) -> bool;
+    /// Build mesh, you may find [`TrailMeshBuilder`] useful in implementing this.
     #[allow(unused_variables)]
     fn build_trail(&self, mesh: &mut Mesh);
 
-    /// By default we only generate position, uv and indices.
+    /// By default we only generate position, uv, normal and indices.
     fn default_mesh() -> Mesh {
         Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::all())
             .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, Vec::<Vec3>::new())
@@ -41,13 +44,17 @@ pub trait TrailedParticle: Particle {
     /// Usually a fixed sized ring buffer of points that constructs a mesh.
     type TrailBuffer: TrailBuffer;
 
+    /// Convert to [`TrailBuffer`].
     fn as_trail_buffer(&self) -> Self::TrailBuffer;
+    /// Convert to a mutable [`TrailBuffer`].
     fn as_trail_buffer_mut(&mut self) -> &mut Self::TrailBuffer;
 }
 
 /// ParticleSystem with [`Particle`] as a [`TrailedParticle`].
 pub trait TrailParticleSystem {
+    /// Generate a default [`Mesh`].
     fn default_mesh(&self) -> Mesh;
+    /// Build a trail [`Mesh`].
     fn build_trail(&self, buffer: &ParticleBuffer, mesh: &mut Mesh);
 }
 

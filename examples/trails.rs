@@ -1,10 +1,10 @@
 //! This example demonstrates the built-in 3d shapes in Bevy.
 //! The scene includes a patterned texture and a rotation for visualizing the normals and UVs.
 
-use berdicle::{
-    trail::{TrailBuffer, TrailMeshBuilder, TrailMeshOf, TrailedParticle},
+use berdicles::{
+    trail::{TrailBuffer, TrailMeshBuilder, TrailMeshOf, TrailParticleSystem, TrailedParticle},
     util::transform_from_derivative,
-    ExpirationState, Particle, ParticleInstance, ParticlePlugin, ParticleSystem,
+    ExpirationState, Particle, ParticleBuffer, ParticleInstance, ParticlePlugin, ParticleSystem,
     ParticleSystemBundle, RingBuffer, StandardParticle,
 };
 use bevy::{
@@ -160,21 +160,15 @@ impl ParticleSystem for MainSpawner {
         }
     }
 
-    fn on_update(&mut self, dt: f32, buffer: &mut berdicle::ParticleBuffer) {
+    fn on_update(&mut self, dt: f32, buffer: &mut ParticleBuffer) {
         buffer.update_detached::<Self::Particle>(dt)
     }
 
-    fn detach_slice(
-        &mut self,
-        detached: std::ops::Range<usize>,
-        buffer: &mut berdicle::ParticleBuffer,
-    ) {
+    fn detach_slice(&mut self, detached: std::ops::Range<usize>, buffer: &mut ParticleBuffer) {
         buffer.detach_slice::<Self::Particle>(detached)
     }
 
-    fn as_trail_particle_system(
-        &mut self,
-    ) -> Option<&mut dyn berdicle::trail::TrailParticleSystem> {
+    fn as_trail_particle_system(&mut self) -> Option<&mut dyn TrailParticleSystem> {
         Some(self)
     }
 }

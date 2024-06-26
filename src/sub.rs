@@ -39,7 +39,8 @@ pub struct ParticleEvent {
 #[derive(Debug, Component, Clone, Copy)]
 pub struct ParticleParent(pub Entity);
 
-/// A buffer of particle events.
+/// A buffer of particle events. If added to a particle bundle, will record particle events happened
+/// in this frame. Also enables [`EventParticleSystem`].
 #[derive(Debug, Component, Default)]
 pub struct ParticleEventBuffer(Vec<ParticleEvent>);
 
@@ -111,11 +112,12 @@ impl Debug for dyn ErasedSubParticleSystem {
     }
 }
 
-/// A [`ParticleSystem`] that spawns particles
-/// on parent's emitted events.
+/// A [`ParticleSystem`] that spawns particles on parent's emitted events.
+/// 
+/// You must add [`ParticleEventBuffer`] to the parent for this to function.
 pub trait EventParticleSystem: ParticleSystem {
     /// Returns how many to spawn in a burst on an event.
-    fn spawn_event(&mut self, parent: &ParticleEvent) -> usize;
+    fn spawn_on_event(&mut self, parent: &ParticleEvent) -> usize;
 
     /// Convert a random seed into a particle with parent information.
     fn into_sub_particle(parent: &ParticleEvent, seed: f32) -> Self::Particle;
@@ -123,16 +125,17 @@ pub trait EventParticleSystem: ParticleSystem {
 
 /// Type erased [`EventParticleSystem`].
 pub trait ErasedEventParticleSystem: ErasedParticleSystem {
-    fn spawn_from_event(&mut self, buffer: &mut ParticleBuffer, parent: &ParticleEventBuffer);
+    /// Spawn particles on event.
+    fn spawn_on_event(&mut self, buffer: &mut ParticleBuffer, parent: &ParticleEventBuffer);
 }
 
 impl<T> ErasedEventParticleSystem for T
 where
     T: EventParticleSystem + ErasedParticleSystem,
 {
-    fn spawn_from_event(&mut self, buffer: &mut ParticleBuffer, parent: &ParticleEventBuffer) {
+    fn spawn_on_event(&mut self, buffer: &mut ParticleBuffer, parent: &ParticleEventBuffer) {
         for event in parent.iter() {
-            let num = self.spawn_event(event);
+            let num = self.spawn_on_event(event);
             buffer.extend(
                 (0..num)
                     .map(|_| self.rng())

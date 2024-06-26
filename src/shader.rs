@@ -1,3 +1,5 @@
+//! Shader module for `berdicles`.
+
 use bevy::{asset::Handle, render::render_resource::Shader};
 
 const VERTEX: &str = stringify!(
