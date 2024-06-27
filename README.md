@@ -6,6 +6,7 @@ Expressive CPU particle system for the bevy engine.
 
 * Instancing based CPU particles.
 * Expressive non-physics based particle traits.
+* Familiar setup with bevy's native `Material` and `Mesh`.
 * Particles as emitters.
 * Mesh based particle trails.
 * Particle events that spawns other particles.
