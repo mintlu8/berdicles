@@ -277,6 +277,13 @@ impl ParticleBuffer {
 
     /// Detach a slice of particles into trail rendering.
     pub fn detach_slice<T: TrailedParticle>(&mut self, slice: Range<usize>) {
+        if slice.end > match self.particle_type {
+            ParticleBufferType::Uninit => 0,
+            ParticleBufferType::Retain(_) => self.len,
+            ParticleBufferType::RingBuffer(_) => self.ring_capacity,
+        } {
+            panic!("Invalid slice range: {slice:?}.")
+        };
         let buf = match self.particle_type {
             ParticleBufferType::Uninit => panic!("Type ID mismatch!"),
             ParticleBufferType::Retain(id) => {
