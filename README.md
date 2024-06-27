@@ -25,6 +25,9 @@ Add a `ParticleSystemBundle`, which is a `MaterialMeshBundle` with a `ParticleIn
 * Huh?
 
 First we need to add `ParticleMaterialPlugin`, not `MaterialPlugin`, which sets up a different render pipeline.
+
+We only use `vertex_shader()` and `fragment_shader()` from Material so the rest can be ignored.
+
 This uses the mesh as the particle shape and the shader for instancing. The `StandardParticle` is already setup
 in this crate, but you can define your own `Material` by referencing this shader's source code.
 
