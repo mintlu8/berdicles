@@ -4,8 +4,8 @@
 use berdicles::{
     trail::{TrailBuffer, TrailMeshBuilder, TrailMeshOf, TrailParticleSystem, TrailedParticle},
     util::transform_from_derivative,
-    ExpirationState, Particle, ParticleBuffer, ParticleInstance, ParticlePlugin, ParticleSystem,
-    ParticleSystemBundle, RingBuffer, StandardParticle,
+    ExpirationState, Particle, ParticleBuffer, ParticleInstance,
+    ParticlePlugin, ParticleSystem, ParticleSystemBundle, RingBuffer, StandardParticle,
 };
 use bevy::{
     diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin},
@@ -138,6 +138,7 @@ pub struct MainSpawner(f32);
 
 impl ParticleSystem for MainSpawner {
     type Particle = MainParticle;
+    //const STRATEGY: ParticleBufferStrategy = ParticleBufferStrategy::RingBuffer;
 
     fn capacity(&self) -> usize {
         100

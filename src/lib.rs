@@ -161,6 +161,24 @@ impl ExpirationState {
     pub const fn is_expired(&self) -> bool {
         !matches!(self, Self::None)
     }
+
+    /// Returns [`ExpirationState::Fizzle`] if true.
+    pub const fn fizzle_if(&self, cond: bool) -> Self {
+        if cond {
+            Self::Fizzle
+        } else {
+            Self::None
+        }
+    }
+
+    /// Returns [`ExpirationState::Explode`] if true.
+    pub const fn explode_if(&self, cond: bool) -> Self {
+        if cond {
+            Self::Explode
+        } else {
+            Self::None
+        }
+    }
 }
 
 /// A [`Particle`]. Must be [`Copy`] and have alignment less than `16`.
@@ -226,11 +244,6 @@ pub trait Particle: Copy + 'static {
 
 /// A particle spawner type.
 pub trait ParticleSystem {
-    /// If true, use par_iter. Should not be set on smaller particle systems.
-    ///
-    /// Currently unimplemented.
-    const PAR_ITER: bool = false;
-
     /// If true, ignore [`Transform`] and [`GlobalTransform`].
     const WORLD_SPACE: bool = false;
 
@@ -240,7 +253,7 @@ pub trait ParticleSystem {
     /// * RingBuffer: Ignore expired particles, should only be used if lifetime is constant
     /// and capacity is well predicted.
     ///
-    /// Currently RingBuffer does not fully support trail rendering.
+    /// If rendering trails using ring buffer, capacity should include detached trails.
     const STRATEGY: ParticleBufferStrategy = ParticleBufferStrategy::Retain;
 
     /// Particle type of the system.
@@ -284,11 +297,11 @@ pub trait ParticleSystem {
 
     /// Additional actions to perform during update.
     ///
-    /// if rendering trails, we should call [`ParticleBuffer::update_detached`] here.
+    /// if rendering trails using `Retain`, we should call [`ParticleBuffer::update_detached`] here.
     #[allow(unused_variables)]
     fn on_update(&mut self, dt: f32, buffer: &mut ParticleBuffer) {}
 
-    /// If rendering trails, call [`ParticleBuffer::detach_slice`].
+    /// If rendering trails using `Retain`, call [`ParticleBuffer::detach_slice`].
     #[allow(unused_variables)]
     fn detach_slice(&mut self, detached: Range<usize>, buffer: &mut ParticleBuffer) {}
 

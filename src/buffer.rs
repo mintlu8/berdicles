@@ -28,8 +28,8 @@ pub enum ParticleBufferStrategy {
     Retain,
     /// Ignores dead particles when iterating.
     ///
-    /// Should be used if lifetimes of particles are constant,
-    /// might be awful otherwise.
+    /// Should only be used if lifetimes of particles are constant,
+    /// and capacity is well predicted.
     RingBuffer,
 }
 
@@ -277,11 +277,13 @@ impl ParticleBuffer {
 
     /// Detach a slice of particles into trail rendering.
     pub fn detach_slice<T: TrailedParticle>(&mut self, slice: Range<usize>) {
-        if slice.end > match self.particle_type {
-            ParticleBufferType::Uninit => 0,
-            ParticleBufferType::Retain(_) => self.len,
-            ParticleBufferType::RingBuffer(_) => self.ring_capacity,
-        } {
+        if slice.end
+            > match self.particle_type {
+                ParticleBufferType::Uninit => 0,
+                ParticleBufferType::Retain(_) => self.len,
+                ParticleBufferType::RingBuffer(_) => self.ring_capacity,
+            }
+        {
             panic!("Invalid slice range: {slice:?}.")
         };
         let buf = match self.particle_type {

@@ -68,9 +68,6 @@ where
 
     fn build_trail(&self, buffer: &ParticleBuffer, mesh: &mut Mesh) {
         for particle in buffer.get::<T::Particle>() {
-            if particle.is_expired() {
-                continue;
-            }
             particle.as_trail_buffer().build_trail(mesh);
         }
         if let Some(detached) = buffer.detached::<<T::Particle as TrailedParticle>::TrailBuffer>() {

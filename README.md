@@ -5,16 +5,17 @@ Expressive CPU particle system for the bevy engine.
 ## Feature Set
 
 * Instancing based CPU particles.
-* Expressive trait based particles.
+* Non-physics based expressive particle traits.
 * Particles as emitters.
-* Particles trails.
-* Particle events.
+* Mesh based particle trails.
+* Particle events that spawns particles.
 * Billboard particles.
 
 Non-features
 
 * GPU simulation.
 * SIMD and similar optimizations.
+* First party physics support.
 
 Basically the crates trades some potential optimizations for expressiveness.
 
@@ -33,9 +34,36 @@ in this crate, but you can define your own `Material` by referencing this shader
 
 To create a `ParticleInstance` we need a `ParticleSystem` trait implementor and a `Particle` that it spawns.
 
+## Trait Based Particles
+
+Physics based particles is commonly seen in most particle system implementations,
+but they might be frustrating to work with in some situations.
+We provide alternative ways to implement particles, instead of defining things
+as velocities, forces or curves.
+
+```rust
+impl Particle for SpiralParticle {
+    fn update(&mut self, dt: f32) { 
+        self.lifetime += dt;
+    }
+
+    fn get_transform(&self) -> Transform {
+        Transform::from_translation(
+            Vec3::new(self.lifetime, 0., 0.)
+        ).with_rotation(
+            Quat::from_rotation_y(self.lifetime)
+        )
+    }
+
+    fn expiration_state(&self) -> ExpirationState{
+        ExpirationState::explode_if(self.lifetime > 8.)
+    }
+}
+```
+
 ## Sub-particle Systems
 
-`SubParticleSystem` uses a parent particle system's particles as spawners.
+`SubParticleSystem` uses a parent particle system's particles as spawners for other particles.
 
 * Add `ParticleParent(Entity)` to point to a parent
 * Add the downcast function `as_sub_particle_system` to your `ParticleSystem` implementation.
