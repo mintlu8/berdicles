@@ -4,8 +4,8 @@
 use berdicles::{
     trail::{TrailBuffer, TrailMeshBuilder, TrailMeshOf, TrailParticleSystem, TrailedParticle},
     util::transform_from_derivative,
-    ExpirationState, Particle, ParticleBuffer, ParticleInstance,
-    ParticlePlugin, ParticleSystem, ParticleSystemBundle, RingBuffer, StandardParticle,
+    ExpirationState, Particle, ParticleBuffer, ParticleInstance, ParticlePlugin, ParticleSystem,
+    ParticleSystemBundle, RingBuffer, StandardParticle,
 };
 use bevy::{
     diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin},
@@ -89,8 +89,8 @@ impl Particle for MainParticle {
             self.trail_meta = self.trail_meta.fract();
             self.trail.0.push(TrailVertex {
                 position: self.get_position(),
-                tangent: Vec3::Z,
-                width: 1.,
+                tangent: Vec3::X,
+                width: 0.2,
             })
         }
     }
@@ -117,7 +117,7 @@ pub struct Trail(RingBuffer<TrailVertex, 16>);
 impl TrailBuffer for Trail {
     fn update(&mut self, dt: f32) {
         self.0.retain_mut_ordered(|item| {
-            item.width -= dt;
+            item.width -= dt * 0.3;
             item.width > 0.
         });
     }
@@ -227,6 +227,7 @@ fn setup(
             mesh: meshes.add(Sphere::new(0.1).mesh()),
             material: materials.add(StandardMaterial {
                 base_color: Color::srgba(0., 1., 1., 1.),
+                base_color_texture: Some(images.add(uv_debug_texture())),
                 cull_mode: None,
                 double_sided: true,
                 unlit: true,
