@@ -58,6 +58,7 @@ pub fn transform_from_derivative(mut f: impl FnMut(f32) -> Vec3, lifetime: f32) 
     Transform::from_translation(translation).looking_to(next - translation, Vec3::Y)
 }
 
+/// Create a random [`Quat`].
 pub fn random_quat(seed: f32) -> Quat {
     let mut rng = into_rng(seed);
     let u1 = rng.f32();
