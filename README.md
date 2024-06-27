@@ -5,10 +5,10 @@ Expressive CPU particle system for the bevy engine.
 ## Feature Set
 
 * Instancing based CPU particles.
-* Non-physics based expressive particle traits.
+* Expressive non-physics based particle traits.
 * Particles as emitters.
 * Mesh based particle trails.
-* Particle events that spawns particles.
+* Particle events that spawns other particles.
 * Billboard particles.
 
 Non-features
