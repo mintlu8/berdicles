@@ -250,18 +250,11 @@ impl ParticleBuffer {
                     if self.len == self.capacity {
                         continue;
                     }
-                    loop {
-                        if self.ptr >= self.ring_capacity
-                            || unsafe { slice[self.ptr].assume_init_ref() }.is_expired()
-                        {
-                            slice[self.ptr] = MaybeUninit::new(item);
-                            self.len += 1;
-                            self.ring_capacity = self.capacity.min(self.ring_capacity + 1);
-                            self.ptr = (self.ptr + 1) % slice.len();
-                            break;
-                        }
-                        self.ptr = (self.ptr + 1) / slice.len();
+                    if self.ring_capacity < slice.len() && self.ptr > self.ring_capacity {
+                        self.ring_capacity += 1;
                     }
+                    slice[self.ptr] = MaybeUninit::new(item);
+                    self.ptr = (self.ptr + 1) % slice.len();
                 }
             }
         }
