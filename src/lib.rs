@@ -250,10 +250,10 @@ pub trait ParticleSystem {
     /// Changes what strategy to use when cleaning up used particles.
     ///
     /// * Retain(default): Remove expired particles by moving alive particles in front.
-    /// * RingBuffer: Ignore expired particles, should only be used if lifetime is constant
-    /// and capacity is well predicted.
+    /// * RingBuffer: Particles are not removed explicitly, but can expire and be reused later.
+    /// Should only be used if lifetime is constant and capacity is well predicted.
     ///
-    /// If rendering trails using ring buffer, capacity should include detached trails.
+    /// If rendering trails using ring buffer, capacity for detached trails should be reserved.
     const STRATEGY: ParticleBufferStrategy = ParticleBufferStrategy::Retain;
 
     /// Particle type of the system.
@@ -306,6 +306,9 @@ pub trait ParticleSystem {
     fn detach_slice(&mut self, detached: Range<usize>, buffer: &mut ParticleBuffer) {}
 
     /// Perform a meta action on the ParticleSystem.
+    /// 
+    /// Since [`ParticleInstance`] is type erased, this is the standard way to modify
+    /// a [`ParticleSystem`] at runtime.
     ///
     /// # Example
     ///
@@ -353,6 +356,10 @@ pub trait ErasedParticleSystem: Send + Sync {
     ///
     /// If not specified, `Debug` will only print a generic struct.
     fn as_debug(&self) -> &dyn Debug;
+    /// Convert to [`Any`].
+    fn as_any(&self) -> &dyn Any;
+    /// Convert to mutable [`Any`].
+    fn as_any_mut(&mut self) -> &mut dyn Any;
     /// Returns [`ParticleSystem::WORLD_SPACE`].
     fn is_world_space(&self) -> bool;
     /// Advance by time.
@@ -397,6 +404,18 @@ impl ParticleInstance {
     pub fn new<P: ParticleSystem + Send + Sync + 'static>(particles: P) -> Self {
         Self(Box::new(particles))
     }
+
+    /// Try obtain a [`ParticleSystem`] by downcasting.
+    pub fn downcast_ref<P: ParticleSystem + Send + Sync + 'static>(&self) -> Option<&P> {
+        self.0.as_any().downcast_ref()
+    }
+
+    /// Try obtain a mutable [`ParticleSystem`] by downcasting.
+    /// 
+    /// Alternatively use [`ParticleSystem::apply_meta`].
+    pub fn downcast_mut<P: ParticleSystem + Send + Sync + 'static>(&mut self) -> Option<&mut P> {
+        self.0.as_any_mut().downcast_mut()
+    }
 }
 
 impl Deref for ParticleInstance {
@@ -420,10 +439,18 @@ fn spawn_particle<T: ParticleSystem>(particles: &mut T) -> T::Particle {
 
 impl<T> ErasedParticleSystem for T
 where
-    T: ParticleSystem + Send + Sync,
+    T: ParticleSystem + Send + Sync + 'static,
 {
     fn as_debug(&self) -> &dyn Debug {
         ParticleSystem::as_debug(self)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 
     fn is_world_space(&self) -> bool {
