@@ -2,10 +2,11 @@ use std::mem::MaybeUninit;
 
 /// A domain specific data structure for implementing [`TrailBuffer`](crate::trail::TrailBuffer).
 #[derive(Debug, Clone, Copy)]
+#[repr(C)]
 pub struct RingBuffer<T: Copy, const N: usize> {
-    buffer: [MaybeUninit<T>; N],
     len: usize,
     start: usize,
+    buffer: [MaybeUninit<T>; N],
 }
 
 impl<T: Copy, const N: usize> Default for RingBuffer<T, N> {
