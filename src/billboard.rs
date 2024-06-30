@@ -7,7 +7,8 @@ use bevy::{
 
 /// Add to a `ParticleSystemBundle` to make it always face the camera.
 ///
-/// You may want to mark your camera as [`BillboardCamera`] if you have multiple.
+/// You might want to mark one of your cameras as [`BillboardCamera`]
+/// if you have multiple cameras.
 #[derive(Debug, Component, Default)]
 pub struct BillboardParticle(pub(crate) Quat);
 
@@ -19,7 +20,7 @@ impl BillboardParticle {
 
 /// Marker component that selects [`Camera`] for billboard rendering.
 ///
-/// Optional if only one camera existså.
+/// Optional if only one camera exists.
 #[derive(Debug, Component)]
 pub struct BillboardCamera;
 

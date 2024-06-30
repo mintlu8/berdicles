@@ -9,7 +9,7 @@ Expressive CPU particle system for the bevy engine.
 * Familiar setup with bevy's native `Material` and `Mesh`.
 * Particles as emitters.
 * Mesh based particle trails.
-* Particle events that spawns other particles.
+* Particle events that spawn other particles.
 * Multiple renders from the same simulation result via `ParticleRef`.
 * Billboard particles.
 
