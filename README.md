@@ -19,8 +19,6 @@ Non-features
 * SIMD and similar optimizations.
 * First party physics support.
 
-Basically the crates trades some potential optimizations for expressiveness.
-
 ## Getting Started
 
 Add a `ParticleSystemBundle`, which is a `MaterialMeshBundle` with a `ParticleInstance`.
