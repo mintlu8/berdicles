@@ -2,7 +2,7 @@
 
 use bevy::{asset::Handle, render::render_resource::Shader};
 
-const VERTEX: &str = stringify!(
+pub const PARTICLE_VERTEX_IN: &str = stringify!(
     struct Vertex {
         @builtin(instance_index) instance_index: u32,
         @location(0) position: vec3<f32>,
@@ -21,7 +21,7 @@ const VERTEX: &str = stringify!(
     };
 );
 
-const VERTEX_OUT: &str = stringify!(
+pub const PARTICLE_VERTEX_OUT: &str = stringify!(
     struct VertexOutput {
         @builtin(position) clip_position: vec4<f32>,
 
@@ -80,14 +80,14 @@ const DBG_FN: &str = stringify!(
 pub static SHADER_VERTEX: &str = const_format::concatcp!(
     "#import bevy_pbr::mesh_functions::get_world_from_local\n",
     "#import bevy_pbr::view_transformations::position_world_to_clip,\n",
-    VERTEX,
-    VERTEX_OUT,
+    PARTICLE_VERTEX_IN,
+    PARTICLE_VERTEX_OUT,
     VERTEX_FN
 );
 
-pub static SHADER_FRAGMENT: &str = const_format::concatcp!(VERTEX_OUT, FRAGMENT_FN);
+pub static SHADER_FRAGMENT: &str = const_format::concatcp!(PARTICLE_VERTEX_OUT, FRAGMENT_FN);
 
-pub static SHADER_DBG: &str = const_format::concatcp!(VERTEX_OUT, DBG_FN);
+pub static SHADER_DBG: &str = const_format::concatcp!(PARTICLE_VERTEX_OUT, DBG_FN);
 
 const fn weak_from_str(s: &str) -> Handle<Shader> {
     if s.len() > 16 {

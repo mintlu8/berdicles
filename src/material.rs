@@ -16,7 +16,7 @@ use bevy::{
 use crate::{
     shader::{PARTICLE_DBG_FRAGMENT, PARTICLE_FRAGMENT, PARTICLE_VERTEX},
     sub::{ParticleEventBuffer, ParticleParent},
-    ParticleBuffer, ParticleInstance,
+    ParticleBuffer, ParticleInstance, ParticleRef,
 };
 
 /// [`Material`] that displays an unlit combination of `base_color` and `texture` on a mesh.
@@ -142,6 +142,34 @@ impl<M: Material> EventParticleSystemBundle<M> {
             bundle: self.bundle,
             events: self.events,
             parent: ParticleParent(entity),
+        }
+    }
+}
+
+/// A [`Material`] and [`Mesh`] that renders based on
+/// another [`ParticleInstance`]'s output.
+#[derive(Debug, Bundle)]
+pub struct ParticleRefBundle<M: Material> {
+    /// Reference to a [`ParticleInstance`].
+    pub particles: ParticleRef,
+    /// Mesh shape of the particle.
+    pub mesh: Handle<Mesh>,
+    /// Material of the particle.
+    pub material: Handle<M>,
+    pub transform: Transform,
+    pub global_transform: GlobalTransform,
+    pub visibility: VisibilityBundle,
+}
+
+impl<M: Material> Default for ParticleRefBundle<M> {
+    fn default() -> Self {
+        Self {
+            particles: Default::default(),
+            mesh: Default::default(),
+            material: Default::default(),
+            transform: Default::default(),
+            global_transform: Default::default(),
+            visibility: Default::default(),
         }
     }
 }

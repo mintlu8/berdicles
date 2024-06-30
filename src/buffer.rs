@@ -65,7 +65,7 @@ pub struct ExtractedParticle {
     pub color: Vec4,
 }
 
-#[derive(Debug, Component)]
+#[derive(Debug, Clone, Component)]
 pub(crate) struct ExtractedParticleBuffer(pub(crate) Arc<Vec<ExtractedParticle>>);
 
 impl ExtractedParticleBuffer {

@@ -28,7 +28,7 @@ use bevy::{
 
 use crate::{
     shader::{PARTICLE_FRAGMENT, PARTICLE_VERTEX},
-    ExtractedParticle, ExtractedParticleBuffer,
+    ExtractedParticle, ExtractedParticleBuffer, ParticleRef,
 };
 
 /// Add particle rendering pipeline for a [`Material`].
@@ -135,7 +135,7 @@ fn queue_particles<M: Material>(
     pipeline_cache: Res<PipelineCache>,
     meshes: Res<RenderAssets<GpuMesh>>,
     render_mesh_instances: Res<RenderMeshInstances>,
-    material_meshes: Query<Entity, With<ExtractedParticleBuffer>>,
+    material_meshes: Query<Entity, Or<(With<ExtractedParticleBuffer>, With<ParticleRef>)>>,
     mut transparent_render_phases: ResMut<ViewSortedRenderPhases<Transparent3d>>,
     mut views: Query<(Entity, &ExtractedView)>,
 ) {
@@ -176,8 +176,8 @@ fn queue_particles<M: Material>(
     }
 }
 
-#[derive(Component)]
-struct InstanceBuffer {
+#[derive(Component, Clone)]
+pub(crate) struct InstanceBuffer {
     buffer: Buffer,
     length: usize,
 }

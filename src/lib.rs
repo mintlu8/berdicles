@@ -14,10 +14,11 @@ use bevy::{
     color::{ColorToComponents, Srgba},
     ecs::query::QueryItem,
     math::{Quat, Vec3},
-    prelude::{Component, Entity, IntoSystemConfigs, Query, Res},
+    prelude::{Commands, Component, Entity, IntoSystemConfigs, Query, Res},
     render::{
         extract_component::{ExtractComponent, ExtractComponentPlugin},
         render_resource::Shader,
+        Render, RenderApp, RenderSet,
     },
     time::Time,
     transform::{
@@ -30,6 +31,7 @@ use noop::NoopParticleSystem;
 mod material;
 pub use material::*;
 mod pipeline;
+use pipeline::InstanceBuffer;
 pub use pipeline::ParticleMaterialPlugin;
 pub mod shader;
 mod sub;
@@ -67,6 +69,7 @@ impl Plugin for ParticlePlugin {
             Shader::from_wgsl(shader::SHADER_DBG, "berdicle/particle_dbg_fragment.wgsl"),
         );
         app.add_plugins(ExtractComponentPlugin::<ExtractedParticleBuffer>::default());
+        app.add_plugins(ExtractComponentPlugin::<ParticleRef>::default());
         app.add_plugins(ParticleMaterialPlugin::<StandardParticle>::default());
         app.add_plugins(ParticleMaterialPlugin::<DebugParticle>::default());
         app.add_systems(Update, particle_system);
@@ -76,6 +79,10 @@ impl Plugin for ParticlePlugin {
             billboard_system
                 .after(propagate_transforms)
                 .after(sync_simple_transforms),
+        );
+        app.sub_app_mut(RenderApp).add_systems(
+            Render,
+            particle_ref_system.in_set(RenderSet::PrepareResourcesFlush),
         );
     }
 }
@@ -306,7 +313,7 @@ pub trait ParticleSystem {
     fn detach_slice(&mut self, detached: Range<usize>, buffer: &mut ParticleBuffer) {}
 
     /// Perform a meta action on the ParticleSystem.
-    /// 
+    ///
     /// Since [`ParticleInstance`] is type erased, this is the standard way to modify
     /// a [`ParticleSystem`] at runtime.
     ///
@@ -411,7 +418,7 @@ impl ParticleInstance {
     }
 
     /// Try obtain a mutable [`ParticleSystem`] by downcasting.
-    /// 
+    ///
     /// Alternatively use [`ParticleSystem::apply_meta`].
     pub fn downcast_mut<P: ParticleSystem + Send + Sync + 'static>(&mut self) -> Option<&mut P> {
         self.0.as_any_mut().downcast_mut()
@@ -627,6 +634,41 @@ impl ExtractComponent for ExtractedParticleBuffer {
             Some(ExtractedParticleBuffer(lock.clone()))
         } else {
             None
+        }
+    }
+}
+
+impl ExtractComponent for ParticleRef {
+    type QueryData = &'static ParticleRef;
+    type QueryFilter = ();
+    type Out = ParticleRef;
+
+    fn extract_component(r: QueryItem<'_, Self::QueryData>) -> Option<Self::Out> {
+        Some(*r)
+    }
+}
+
+/// Create a cheap copy of a [`ParticleInstance`]'s output
+/// to use with a different set of material and mesh.
+///
+/// See also [`ParticleRefBundle`].
+#[derive(Debug, Component, Clone, Copy)]
+pub struct ParticleRef(pub Entity);
+
+impl Default for ParticleRef {
+    fn default() -> Self {
+        ParticleRef(Entity::PLACEHOLDER)
+    }
+}
+
+fn particle_ref_system(
+    mut commands: Commands,
+    particles: Query<&InstanceBuffer>,
+    query: Query<(Entity, &ParticleRef)>,
+) {
+    for (entity, ParticleRef(parent)) in &query {
+        if let Ok(buffer) = particles.get(*parent) {
+            commands.entity(entity).insert(buffer.clone());
         }
     }
 }
