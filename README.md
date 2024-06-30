@@ -10,6 +10,7 @@ Expressive CPU particle system for the bevy engine.
 * Particles as emitters.
 * Mesh based particle trails.
 * Particle events that spawns other particles.
+* Multiple renders from the same simulation result via `ParticleRef`.
 * Billboard particles.
 
 Non-features

@@ -1,6 +1,6 @@
 [package]
 name = "berdicles"
-version = "0.0.2"
+version = "0.0.3"
 edition = "2021"
 
 authors = ["Mincong Lu <mintlux667@gmail.com>"]
