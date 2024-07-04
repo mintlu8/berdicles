@@ -243,9 +243,10 @@ pub trait Particle: Copy + 'static {
         }
     }
 
-    /// Obtain if and how this particle has expired.
+    /// Obtain if and how this particle has expired. 
+    /// If rendering trails, this does not affect the aliveness of the trail.
     ///
-    /// This can be written to a particle event queue.
+    /// If paired with an [`ParticleEventBuffer`], the type of expiration will be written there.
     fn expiration_state(&self) -> ExpirationState;
 
     /// Returns true if the particle has expired.
