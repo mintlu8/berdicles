@@ -39,6 +39,18 @@ pub struct ParticleEvent {
 #[derive(Debug, Component, Clone, Copy)]
 pub struct ParticleParent(pub Entity);
 
+impl Default for ParticleParent {
+    fn default() -> Self {
+        ParticleParent(Entity::PLACEHOLDER)
+    }
+}
+
+impl From<Entity> for ParticleParent {
+    fn from(value: Entity) -> Self {
+        ParticleParent(value)
+    }
+}
+
 /// A buffer of particle events. If added to a particle bundle, will record particle events happened
 /// in this frame. Also enables [`EventParticleSystem`].
 #[derive(Debug, Component, Default)]

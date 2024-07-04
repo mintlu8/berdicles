@@ -16,6 +16,7 @@ use bevy::{
 use crate::{
     shader::{PARTICLE_DBG_FRAGMENT, PARTICLE_FRAGMENT, PARTICLE_VERTEX},
     sub::{ParticleEventBuffer, ParticleParent},
+    trail::TrailMeshOf,
     ParticleBuffer, ParticleInstance, ParticleRef,
 };
 
@@ -150,7 +151,7 @@ impl<M: Material> EventParticleSystemBundle<M> {
 /// another [`ParticleInstance`]'s output.
 #[derive(Debug, Bundle)]
 pub struct ParticleRefBundle<M: Material> {
-    /// Reference to a [`ParticleInstance`].
+    /// A reference to a [`ParticleInstance`].
     pub particles: ParticleRef,
     /// Mesh shape of the particle.
     pub mesh: Handle<Mesh>,
@@ -172,4 +173,18 @@ impl<M: Material> Default for ParticleRefBundle<M> {
             visibility: Default::default(),
         }
     }
+}
+
+/// A Bundle of a particle trails.
+#[derive(Debug, Bundle)]
+pub struct ParticleTrailsBundle<M: Material> {
+    /// A reference to a [`ParticleSystem`](crate::ParticleSystem).
+    pub of: TrailMeshOf,
+    /// Mesh shape of the trails, can be left as `default`.
+    pub mesh: Handle<Mesh>,
+    /// Material of the trails.
+    pub material: Handle<M>,
+    pub transform: Transform,
+    pub global_transform: GlobalTransform,
+    pub visibility: VisibilityBundle,
 }

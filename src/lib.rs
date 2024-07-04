@@ -14,7 +14,7 @@ use bevy::{
     color::{ColorToComponents, Srgba},
     ecs::query::QueryItem,
     math::{Quat, Vec3},
-    prelude::{Commands, Component, Entity, IntoSystemConfigs, Query, Res},
+    prelude::{Commands, Component, DetectChanges, Entity, IntoSystemConfigs, Query, Ref, Res},
     render::{
         extract_component::{ExtractComponent, ExtractComponentPlugin},
         render_resource::Shader,
@@ -94,6 +94,7 @@ pub fn particle_system(
         Entity,
         &mut ParticleInstance,
         &mut ParticleBuffer,
+        Ref<GlobalTransform>,
         Option<&mut ParticleEventBuffer>,
         Option<&ParticleParent>,
     )>,
@@ -101,9 +102,12 @@ pub fn particle_system(
     let dt = time.delta_seconds();
     particles
         .par_iter_mut()
-        .for_each(|(_, mut system, mut buffer, events, _)| {
+        .for_each(|(_, mut system, mut buffer, transform, events, _)| {
             if buffer.is_uninit() {
                 *buffer = system.spawn_particle_buffer();
+            }
+            if transform.is_changed() && system.is_world_space() {
+                system.update_position(&transform)
             }
             if let Some(mut events) = events {
                 events.clear();
@@ -114,7 +118,7 @@ pub fn particle_system(
         });
 
     // Safety: parent is checked to not be the same entity.
-    for (entity, mut system, mut buffer, _, parent) in unsafe { particles.iter_unsafe() } {
+    for (entity, mut system, mut buffer, _, _, parent) in unsafe { particles.iter_unsafe() } {
         let Some(ParticleParent(parent)) = parent else {
             continue;
         };
@@ -123,13 +127,14 @@ pub fn particle_system(
         }
         if let Some(sub) = system.as_sub_particle_system() {
             // Safety: parent is checked to not be the same entity.
-            let Ok((_, _, mut parent, _, _)) = (unsafe { particles.get_unchecked(*parent) }) else {
+            let Ok((_, _, mut parent, _, _, _)) = (unsafe { particles.get_unchecked(*parent) })
+            else {
                 continue;
             };
             sub.spawn_from_parent(dt, &mut buffer, &mut parent);
         }
         if let Some(sub) = system.as_event_particle_system() {
-            let Ok((_, _, _, Some(parent), _)) = particles.get(*parent) else {
+            let Ok((_, _, _, _, Some(parent), _)) = particles.get(*parent) else {
                 continue;
             };
             sub.spawn_on_event(&mut buffer, parent);
@@ -320,6 +325,7 @@ pub trait ParticleSystem {
     /// # Example
     ///
     /// Change the spawner's transform matrix when `GlobalTransform` is changed.
+    /// (functionalities for [`update_position`](ParticleSystem::update_position))
     ///
     /// ```
     /// # /*
@@ -340,6 +346,11 @@ pub trait ParticleSystem {
     /// ```
     #[allow(unused_variables)]
     fn apply_meta(&mut self, command: &dyn Any) {}
+
+    /// Optionally update the position of the spawner,
+    /// by default only called if `WORLD_SPACE` and [`GlobalTransform`] is changed.
+    #[allow(unused_variables)]
+    fn update_position(&mut self, transform: &GlobalTransform) {}
 
     /// Downcast into a [`SubParticleSystem`].
     fn as_sub_particle_system(&mut self) -> Option<&mut dyn ErasedSubParticleSystem> {
@@ -363,9 +374,9 @@ pub trait ErasedParticleSystem: Send + Sync {
     ///
     /// If not specified, `Debug` will only print a generic struct.
     fn as_debug(&self) -> &dyn Debug;
-    /// Convert to [`Any`].
+    /// Convert to an [`Any`].
     fn as_any(&self) -> &dyn Any;
-    /// Convert to mutable [`Any`].
+    /// Convert to a mutable [`Any`].
     fn as_any_mut(&mut self) -> &mut dyn Any;
     /// Returns [`ParticleSystem::WORLD_SPACE`].
     fn is_world_space(&self) -> bool;
@@ -380,6 +391,9 @@ pub trait ErasedParticleSystem: Send + Sync {
     );
     /// Create an empty [`ParticleBuffer`].
     fn spawn_particle_buffer(&self) -> ParticleBuffer;
+    /// Update the global position of the spawner.
+    #[allow(unused_variables)]
+    fn update_position(&mut self, transform: &GlobalTransform);
     /// Perform a meta action on the ParticleSystem.
     fn apply_meta(&mut self, command: &dyn Any);
     fn extract(
@@ -542,6 +556,10 @@ where
         }
     }
 
+    fn update_position(&mut self, transform: &GlobalTransform) {
+        ParticleSystem::update_position(self, transform)
+    }
+
     fn apply_meta(&mut self, command: &dyn Any) {
         ParticleSystem::apply_meta(self, command)
     }
@@ -658,6 +676,12 @@ pub struct ParticleRef(pub Entity);
 impl Default for ParticleRef {
     fn default() -> Self {
         ParticleRef(Entity::PLACEHOLDER)
+    }
+}
+
+impl From<Entity> for ParticleRef {
+    fn from(value: Entity) -> Self {
+        ParticleRef(value)
     }
 }
 

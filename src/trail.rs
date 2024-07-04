@@ -115,6 +115,18 @@ fn clean_mesh(mesh: &mut Mesh) {
 #[derive(Debug, Component)]
 pub struct TrailMeshOf(pub Entity);
 
+impl Default for TrailMeshOf {
+    fn default() -> Self {
+        TrailMeshOf(Entity::PLACEHOLDER)
+    }
+}
+
+impl From<Entity> for TrailMeshOf {
+    fn from(value: Entity) -> Self {
+        TrailMeshOf(value)
+    }
+}
+
 /// System for rendering trails.
 pub fn trail_rendering(
     mut meshes: ResMut<Assets<Mesh>>,
