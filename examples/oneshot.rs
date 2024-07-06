@@ -2,9 +2,8 @@
 //! The scene includes a patterned texture and a rotation for visualizing the normals and UVs.
 
 use berdicles::{
-    util::{random_cone, random_quat},
-    BillboardParticle, ExpirationState, Particle, ParticleInstance, ParticlePlugin, ParticleSystem,
-    ParticleSystemBundle, StandardParticle,
+    util::random_cone, ExpirationState, OneShotParticleInstance, Particle, ParticlePlugin,
+    ParticleSystem, StandardParticle,
 };
 use bevy::{
     diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin},
@@ -40,7 +39,6 @@ fn main() {
 #[derive(Debug, Clone, Copy)]
 pub struct MyParticle {
     pub seed: f32,
-    pub life_time: f32,
 }
 
 impl Particle for MyParticle {
@@ -49,62 +47,37 @@ impl Particle for MyParticle {
     }
 
     fn get_lifetime(&self) -> f32 {
-        self.life_time
+        0.
     }
 
     fn get_transform(&self) -> Transform {
-        let translation =
-            random_cone(Vec3::Y, f32::to_radians(30.), self.seed) * self.life_time * 2.;
-        let rotation = random_quat(self.seed);
-        Transform {
-            translation,
-            rotation,
-            scale: Vec3::ONE,
-        }
+        Transform::from_translation(random_cone(Vec3::Y, f32::to_radians(30.), self.seed) * 2.)
     }
 
-    fn get_color(&self) -> Srgba {
-        Srgba::WHITE
-    }
-
-    fn update(&mut self, dt: f32) {
-        self.life_time += dt;
-    }
+    fn update(&mut self, _: f32) {}
 
     fn expiration_state(&self) -> ExpirationState {
-        if self.life_time > 20.0 {
-            ExpirationState::Fizzle
-        } else {
-            ExpirationState::None
-        }
+        ExpirationState::None
     }
 }
 
-pub struct MySpawner(f32);
+pub struct MySpawner;
 
 impl ParticleSystem for MySpawner {
     type Particle = MyParticle;
 
     fn capacity(&self) -> usize {
-        10000
+        40
     }
 
-    fn spawn_step(&mut self, time: f32) -> usize {
-        self.0 += time * 10.;
-        let result = self.0.floor() as usize;
-        self.0 = self.0.fract();
-        result
+    fn spawn_step(&mut self, _: f32) -> usize {
+        40
     }
 
     fn build_particle(&self, seed: f32) -> Self::Particle {
-        MyParticle {
-            seed,
-            life_time: 0.,
-        }
+        MyParticle { seed }
     }
 }
-
-const CAM: Vec3 = Vec3::new(0.0, 7., 30.0);
 
 fn setup(
     mut commands: Commands,
@@ -117,44 +90,26 @@ fn setup(
         text: Text::from_section("FPS: 60.00", Default::default()),
         ..Default::default()
     });
-
-    let mesh_handle = meshes
-        .add(Mesh::from(Plane3d::default().mesh()).rotated_by(Quat::from_rotation_x(-PI / 2.0)));
     commands.spawn((
-        ParticleSystemBundle {
-            particle_system: ParticleInstance::new(MySpawner(0.)),
-            mesh: mesh_handle.clone(),
+        MaterialMeshBundle {
+            mesh: meshes.add(
+                Mesh::from(
+                    Cone {
+                        radius: 0.5,
+                        height: 0.5,
+                    }
+                    .mesh(),
+                )
+                .rotated_by(Quat::from_rotation_x(-PI / 2.0)),
+            ),
             material: materials2.add(StandardParticle {
-                base_color: LinearRgba::new(2., 0., 0., 1.),
+                base_color: LinearRgba::new(2., 2., 2., 1.),
                 texture: images.add(uv_debug_texture()),
             }),
-            transform: Transform::from_xyz(-4., 0., 0.),
             ..Default::default()
         },
-        BillboardParticle::new(),
+        OneShotParticleInstance::new(MySpawner),
     ));
-
-    commands.spawn(ParticleSystemBundle {
-        particle_system: ParticleInstance::new(MySpawner(0.)),
-        mesh: mesh_handle.clone(),
-        material: materials2.add(StandardParticle {
-            base_color: LinearRgba::new(0., 0., 2., 1.),
-            texture: images.add(uv_debug_texture()),
-        }),
-        transform: Transform::from_xyz(4., 0., 0.),
-        ..Default::default()
-    });
-
-    commands.spawn(MaterialMeshBundle {
-        mesh: mesh_handle.clone(),
-        material: materials.add(StandardMaterial {
-            base_color: LinearRgba::new(2., 2., 0., 1.).into(),
-            base_color_texture: Some(images.add(uv_debug_texture())),
-            ..Default::default()
-        }),
-        transform: Transform::from_xyz(0., 0.5, 0.).looking_at(CAM, Vec3::Y),
-        ..default()
-    });
 
     commands.spawn(PointLightBundle {
         point_light: PointLight {
@@ -177,7 +132,7 @@ fn setup(
     });
 
     commands.spawn(Camera3dBundle {
-        transform: Transform::from_translation(CAM).looking_at(Vec3::new(0., 0., 0.), Vec3::Y),
+        transform: Transform::from_xyz(0.0, 7., 30.0).looking_at(Vec3::new(0., 0., 0.), Vec3::Y),
         ..default()
     });
 }

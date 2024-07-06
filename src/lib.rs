@@ -12,12 +12,16 @@ use bevy::{
     app::{Plugin, PostUpdate, Update},
     asset::Assets,
     color::{ColorToComponents, Srgba},
-    ecs::query::QueryItem,
+    ecs::{
+        component::{ComponentHooks, StorageType},
+        query::QueryItem,
+    },
     math::{Quat, Vec3},
     prelude::{Commands, Component, DetectChanges, Entity, IntoSystemConfigs, Query, Ref, Res},
     render::{
         extract_component::{ExtractComponent, ExtractComponentPlugin},
-        render_resource::Shader,
+        render_resource::{BufferInitDescriptor, BufferUsages, Shader},
+        renderer::RenderDevice,
         Render, RenderApp, RenderSet,
     },
     time::Time,
@@ -31,7 +35,7 @@ use noop::NoopParticleSystem;
 mod material;
 pub use material::*;
 mod pipeline;
-use pipeline::InstanceBuffer;
+use pipeline::ParticleInstanceBuffer;
 pub use pipeline::ParticleMaterialPlugin;
 pub mod shader;
 mod sub;
@@ -70,6 +74,7 @@ impl Plugin for ParticlePlugin {
         );
         app.add_plugins(ExtractComponentPlugin::<ExtractedParticleBuffer>::default());
         app.add_plugins(ExtractComponentPlugin::<ParticleRef>::default());
+        app.add_plugins(ExtractComponentPlugin::<OneShotParticleBuffer>::default());
         app.add_plugins(ParticleMaterialPlugin::<StandardParticle>::default());
         app.add_plugins(ParticleMaterialPlugin::<DebugParticle>::default());
         app.add_systems(Update, particle_system);
@@ -236,6 +241,7 @@ pub trait Particle: Copy + 'static {
             buffer.push(ParticleEvent {
                 event: expr.into(),
                 seed: self.get_seed(),
+                index: self.get_index(),
                 lifetime: self.get_lifetime(),
                 position: self.get_position(),
                 tangent: self.get_tangent(),
@@ -243,7 +249,7 @@ pub trait Particle: Copy + 'static {
         }
     }
 
-    /// Obtain if and how this particle has expired. 
+    /// Obtain if and how this particle has expired.
     /// If rendering trails, this does not affect the aliveness of the trail.
     ///
     /// If paired with an [`ParticleEventBuffer`], the type of expiration will be written there.
@@ -688,12 +694,84 @@ impl From<Entity> for ParticleRef {
 
 fn particle_ref_system(
     mut commands: Commands,
-    particles: Query<&InstanceBuffer>,
+    particles: Query<&ParticleInstanceBuffer>,
     query: Query<(Entity, &ParticleRef)>,
 ) {
     for (entity, ParticleRef(parent)) in &query {
         if let Ok(buffer) = particles.get(*parent) {
             commands.entity(entity).insert(buffer.clone());
         }
+    }
+}
+
+/// A [`ParticleSystem`] that spawns once and maintains a GPU side instance buffer [`OneShotParticleBuffer`], i.e. grass.
+pub struct OneShotParticleInstance(Vec<ExtractedParticle>);
+
+impl OneShotParticleInstance {
+    pub fn new<P: ParticleSystem>(mut particles: P) -> Self {
+        let count = particles.spawn_step(0.);
+        let mut buf = Vec::with_capacity(count);
+        for _ in 0..count {
+            let seed = particles.rng();
+            let particle = particles.build_particle(seed);
+            let mat = particle.get_transform().compute_matrix();
+            buf.push(ExtractedParticle {
+                index: particle.get_index(),
+                lifetime: particle.get_lifetime(),
+                fac: particle.get_fac(),
+                seed,
+                transform_x: mat.row(0),
+                transform_y: mat.row(1),
+                transform_z: mat.row(2),
+                color: particle.get_color().to_vec4(),
+            })
+        }
+        Self(buf)
+    }
+}
+
+impl Component for OneShotParticleInstance {
+    const STORAGE_TYPE: StorageType = StorageType::Table;
+
+    fn register_component_hooks(hooks: &mut ComponentHooks) {
+        hooks.on_insert(|mut world, entity, _| {
+            let render_device = world.resource::<RenderDevice>();
+            let Some(item) = world.entity(entity).get::<OneShotParticleInstance>() else {
+                return;
+            };
+            let buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
+                label: Some("particle instance buffer"),
+                contents: bytemuck::cast_slice(&item.0),
+                usage: BufferUsages::VERTEX,
+            });
+            let length = item.0.len();
+            world
+                .commands()
+                .entity(entity)
+                .insert(OneShotParticleBuffer(ParticleInstanceBuffer {
+                    buffer,
+                    length,
+                }))
+                .remove::<OneShotParticleInstance>();
+        });
+    }
+}
+
+/// Handle for a spawned GPU side particle instance buffer.
+#[derive(Component)]
+pub struct OneShotParticleBuffer(ParticleInstanceBuffer);
+
+/// Marker for [`OneShotParticleBuffer`] to use the correct render pipeline.
+#[doc(hidden)]
+#[derive(Component)]
+pub struct OneShotParticleMarker;
+
+impl ExtractComponent for OneShotParticleBuffer {
+    type QueryData = &'static OneShotParticleBuffer;
+    type QueryFilter = ();
+    type Out = (ParticleInstanceBuffer, OneShotParticleMarker);
+
+    fn extract_component(r: QueryItem<'_, Self::QueryData>) -> Option<Self::Out> {
+        Some((r.0.clone(), OneShotParticleMarker))
     }
 }

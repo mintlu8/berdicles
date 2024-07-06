@@ -7,7 +7,7 @@ use bevy::{
     transform::components::Transform,
 };
 
-/// Create a [`fastrand::Rng`] from the seed.
+/// Create a [`fastrand::Rng`] from a seed.
 pub fn into_rng(seed: f32) -> fastrand::Rng {
     fastrand::Rng::with_seed((seed as f64 * u64::MAX as f64) as u64)
 }

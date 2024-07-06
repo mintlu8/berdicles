@@ -28,7 +28,7 @@ use bevy::{
 
 use crate::{
     shader::{PARTICLE_FRAGMENT, PARTICLE_VERTEX},
-    ExtractedParticle, ExtractedParticleBuffer, ParticleRef,
+    ExtractedParticle, ExtractedParticleBuffer, OneShotParticleMarker, ParticleRef,
 };
 
 /// Add particle rendering pipeline for a [`Material`].
@@ -51,6 +51,13 @@ impl<M: Material> Default for ParticleMaterialPlugin<M> {
 }
 
 impl<M: Material> ParticleMaterialPlugin<M> {
+    pub fn new(cull_mode: Option<Face>) -> Self {
+        Self {
+            cull_mode,
+            p: PhantomData,
+        }
+    }
+
     pub fn no_culling(mut self) -> Self {
         self.cull_mode = None;
         self
@@ -135,7 +142,14 @@ fn queue_particles<M: Material>(
     pipeline_cache: Res<PipelineCache>,
     meshes: Res<RenderAssets<GpuMesh>>,
     render_mesh_instances: Res<RenderMeshInstances>,
-    material_meshes: Query<Entity, Or<(With<ExtractedParticleBuffer>, With<ParticleRef>)>>,
+    material_meshes: Query<
+        Entity,
+        Or<(
+            With<ExtractedParticleBuffer>,
+            With<ParticleRef>,
+            With<OneShotParticleMarker>,
+        )>,
+    >,
     mut transparent_render_phases: ResMut<ViewSortedRenderPhases<Transparent3d>>,
     mut views: Query<(Entity, &ExtractedView)>,
 ) {
@@ -177,9 +191,9 @@ fn queue_particles<M: Material>(
 }
 
 #[derive(Component, Clone)]
-pub(crate) struct InstanceBuffer {
-    buffer: Buffer,
-    length: usize,
+pub struct ParticleInstanceBuffer {
+    pub(crate) buffer: Buffer,
+    pub(crate) length: usize,
 }
 
 fn prepare_instance_buffers(
@@ -189,11 +203,11 @@ fn prepare_instance_buffers(
 ) {
     for (entity, instance_data) in &query {
         let buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
-            label: Some("instance data buffer"),
+            label: Some("particle instance buffer"),
             contents: instance_data.as_bytes(),
             usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
         });
-        commands.entity(entity).insert(InstanceBuffer {
+        commands.entity(entity).insert(ParticleInstanceBuffer {
             buffer,
             length: instance_data.len(),
         });
@@ -344,13 +358,13 @@ impl<P: PhaseItem> RenderCommand<P> for DrawParticlesInstanced {
         Res<'static, RenderMeshInstances>,
     );
     type ViewQuery = ();
-    type ItemQuery = &'static InstanceBuffer;
+    type ItemQuery = &'static ParticleInstanceBuffer;
 
     #[inline]
     fn render<'w>(
         item: &P,
         _view: (),
-        instance_buffer: Option<&'w InstanceBuffer>,
+        instance_buffer: Option<&'w ParticleInstanceBuffer>,
         (meshes, render_mesh_instances): SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {

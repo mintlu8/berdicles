@@ -37,10 +37,6 @@ fn main() {
         .run();
 }
 
-/// A marker component for our shapes so we can query them separately from the ground plane
-#[derive(Component)]
-struct Shape;
-
 #[derive(Debug, Clone, Copy)]
 pub struct MyParticle {
     pub seed: f32,
@@ -101,10 +97,6 @@ impl ParticleSystem for MySpawner {
         }
     }
 }
-
-const SHAPES_X_EXTENT: f32 = 14.0;
-const EXTRUSION_X_EXTENT: f32 = 16.0;
-const Z_EXTENT: f32 = 5.0;
 
 fn setup(
     mut commands: Commands,

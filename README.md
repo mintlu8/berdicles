@@ -18,6 +18,7 @@ Non-features
 * GPU simulation.
 * SIMD and similar optimizations.
 * First party physics support.
+* Clean up "completed" particle systems.
 
 ## Getting Started
 

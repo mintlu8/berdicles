@@ -47,10 +47,6 @@ fn main() {
         .run();
 }
 
-/// A marker component for our shapes so we can query them separately from the ground plane
-#[derive(Component)]
-struct Shape;
-
 #[derive(Debug, Clone, Copy)]
 pub struct MyParticle {
     pub seed: f32,

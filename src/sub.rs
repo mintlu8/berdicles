@@ -30,6 +30,7 @@ impl From<ExpirationState> for ParticleEventType {
 pub struct ParticleEvent {
     pub event: ParticleEventType,
     pub seed: f32,
+    pub index: u32,
     pub lifetime: f32,
     pub position: Vec3,
     pub tangent: Vec3,
