@@ -2,7 +2,7 @@
 //! The scene includes a patterned texture and a rotation for visualizing the normals and UVs.
 
 use berdicles::{
-    util::{random_cone, transform_from_derivative},
+    util::{random_sphere, transform_from_derivative},
     ExpirationState, Particle, ParticleInstance, ParticlePlugin, ParticleSystem,
     ParticleSystemBundle, StandardParticle,
 };
@@ -53,7 +53,7 @@ impl Particle for MyParticle {
     }
 
     fn get_transform(&self) -> Transform {
-        let f = |t| random_cone(Vec3::Y, f32::to_radians(30.), self.seed) * t * 2.;
+        let f = |t| random_sphere(self.seed) * t * 2.;
         transform_from_derivative(f, self.life_time + 1.)
     }
 
@@ -80,11 +80,11 @@ impl ParticleSystem for MySpawner {
     type Particle = MyParticle;
 
     fn capacity(&self) -> usize {
-        10000
+        100000
     }
 
     fn spawn_step(&mut self, time: f32) -> usize {
-        self.0 += time * 10.;
+        self.0 += time * 4000.;
         let result = self.0.floor() as usize;
         self.0 = self.0.fract();
         result
@@ -102,7 +102,6 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
     mut materials2: ResMut<Assets<StandardParticle>>,
 ) {
     commands.spawn(TextBundle {
@@ -138,14 +137,6 @@ fn setup(
             ..default()
         },
         transform: Transform::from_xyz(8.0, 16.0, 8.0),
-        ..default()
-    });
-
-    // ground plane
-    commands.spawn(PbrBundle {
-        mesh: meshes.add(Plane3d::default().mesh().size(50.0, 50.0).subdivisions(10)),
-        material: materials.add(StandardMaterial::from_color(Srgba::GREEN)),
-        transform: Transform::from_xyz(0., 0., 0.),
         ..default()
     });
 

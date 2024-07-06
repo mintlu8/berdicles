@@ -140,7 +140,7 @@ impl ParticleSystem for MySpawner {
     }
 
     fn spawn_step(&mut self, _: f32) -> usize {
-        80000
+        50000
     }
 
     fn build_particle(&self, seed: f32) -> Self::Particle {
@@ -159,23 +159,27 @@ fn setup(
         text: Text::from_section("FPS: 60.00", Default::default()),
         ..Default::default()
     });
-    commands.spawn((
-        MaterialMeshBundle {
-            mesh: meshes.add(Mesh::from(Plane3d::new(Vec3::Z, Vec2::splat(0.4)).mesh().subdivisions(1))),
-            material: mats.add(ExtendedMaterial {
-                base: StandardParticle {
-                    base_color: LinearRgba::WHITE,
-                    texture: server.load("grass.png"),
-                    alpha_mode: AlphaMode::Blend,
-                },
-                extension: GrassMat {
-                    wind: Vec2::new(1., 1.),
-                },
-            }),
-            ..Default::default()
-        },
-        OneShotParticleInstance::new(MySpawner),
-    ));
+
+    for _ in 0..10 {
+        commands.spawn((
+            MaterialMeshBundle {
+                mesh: meshes.add(Mesh::from(Plane3d::new(Vec3::Z, Vec2::splat(0.4)).mesh().subdivisions(1))),
+                material: mats.add(ExtendedMaterial {
+                    base: StandardParticle {
+                        base_color: LinearRgba::WHITE,
+                        texture: server.load("grass.png"),
+                        alpha_mode: AlphaMode::Blend,
+                    },
+                    extension: GrassMat {
+                        wind: Vec2::new(1., 1.),
+                    },
+                }),
+                ..Default::default()
+            },
+            OneShotParticleInstance::new(MySpawner),
+        ));
+    }
+    
 
     commands.spawn(PointLightBundle {
         point_light: PointLight {
