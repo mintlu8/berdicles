@@ -5,6 +5,7 @@ use bevy::{
     prelude::{Bundle, Deref, DerefMut, Entity},
     reflect::TypePath,
     render::{
+        alpha::AlphaMode,
         mesh::Mesh,
         render_resource::{AsBindGroup, ShaderRef},
         texture::Image,
@@ -28,14 +29,20 @@ pub struct StandardParticle {
     #[texture(1)]
     #[sampler(2)]
     pub texture: Handle<Image>,
+    pub alpha_mode: AlphaMode,
 }
 
 impl Material for StandardParticle {
     fn vertex_shader() -> ShaderRef {
         ShaderRef::Handle(PARTICLE_VERTEX.clone())
     }
+
     fn fragment_shader() -> ShaderRef {
         ShaderRef::Handle(PARTICLE_FRAGMENT.clone())
+    }
+
+    fn alpha_mode(&self) -> AlphaMode {
+        self.alpha_mode
     }
 }
 

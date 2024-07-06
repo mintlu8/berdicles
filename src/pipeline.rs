@@ -6,12 +6,12 @@ use bevy::{
     core_pipeline::core_3d::{AlphaMask3d, Opaque3d, Transparent3d},
     ecs::system::{lifetimeless::SRes, SystemParamItem},
     pbr::{
-        MeshPipeline, MeshPipelineKey, RenderMaterialInstances, RenderMeshInstances,
-        SetMeshBindGroup, SetMeshViewBindGroup,
+        alpha_mode_pipeline_key, MeshPipeline, MeshPipelineKey, RenderMaterialInstances,
+        RenderMeshInstances, SetMeshBindGroup, SetMeshViewBindGroup,
     },
     prelude::*,
     render::{
-        extract_instances::ExtractInstancesPlugin,
+        extract_instances::{ExtractInstancesPlugin, ExtractedInstances},
         mesh::{GpuBufferInfo, GpuMesh, MeshVertexBufferLayoutRef},
         render_asset::{PrepareAssetError, RenderAsset, RenderAssetPlugin, RenderAssets},
         render_phase::{
@@ -22,8 +22,9 @@ use bevy::{
         renderer::RenderDevice,
         texture::{FallbackImage, GpuImage},
         view::ExtractedView,
-        Render, RenderApp, RenderSet,
+        Extract, Render, RenderApp, RenderSet,
     },
+    utils::HashMap,
 };
 
 use crate::{
@@ -69,6 +70,9 @@ impl<M: Material> ParticleMaterialPlugin<M> {
     }
 }
 
+#[derive(Resource)]
+pub struct AlphaMap<M: Material>(HashMap<AssetId<M>, AlphaMode>);
+
 impl<M: Material> Plugin for ParticleMaterialPlugin<M> {
     fn build(&self, app: &mut App) {
         app.init_asset::<M>().add_plugins((
@@ -76,6 +80,17 @@ impl<M: Material> Plugin for ParticleMaterialPlugin<M> {
             RenderAssetPlugin::<PreparedParticle<M>>::default(),
         ));
         app.sub_app_mut(RenderApp)
+            .add_systems(
+                ExtractSchedule,
+                |extract: Extract<Res<Assets<M>>>, mut commands: Commands| {
+                    commands.insert_resource(AlphaMap(
+                        extract
+                            .iter()
+                            .map(|(id, mat)| (id, mat.alpha_mode()))
+                            .collect(),
+                    ));
+                },
+            )
             .add_render_command::<Transparent3d, RenderParticles<M>>()
             .add_render_command::<Opaque3d, RenderParticles<M>>()
             .add_render_command::<AlphaMask3d, RenderParticles<M>>()
@@ -142,6 +157,8 @@ fn queue_particles<M: Material>(
     pipeline_cache: Res<PipelineCache>,
     meshes: Res<RenderAssets<GpuMesh>>,
     render_mesh_instances: Res<RenderMeshInstances>,
+    material_instances: Res<ExtractedInstances<AssetId<M>>>,
+    alpha_map: Res<AlphaMap<M>>,
     material_meshes: Query<
         Entity,
         Or<(
@@ -173,8 +190,14 @@ fn queue_particles<M: Material>(
             let Some(mesh) = meshes.get(mesh_instance.mesh_asset_id) else {
                 continue;
             };
-            let key =
+            let mut key =
                 view_key | MeshPipelineKey::from_primitive_topology(mesh.primitive_topology());
+            if let Some(mode) = material_instances
+                .get(&entity)
+                .and_then(|m| alpha_map.0.get(m))
+            {
+                key |= alpha_mode_pipeline_key(*mode, &msaa);
+            }
             let pipeline = pipelines
                 .specialize(&pipeline_cache, &custom_pipeline, key, &mesh.layout)
                 .unwrap();

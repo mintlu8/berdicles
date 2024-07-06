@@ -124,6 +124,7 @@ fn setup(
         material: materials2.add(StandardParticle {
             base_color: LinearRgba::new(2., 2., 2., 1.),
             texture: images.add(uv_debug_texture()),
+            alpha_mode: AlphaMode::Opaque,
         }),
         ..Default::default()
     });

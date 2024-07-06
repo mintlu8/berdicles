@@ -127,6 +127,7 @@ fn setup(
             material: materials2.add(StandardParticle {
                 base_color: LinearRgba::new(2., 0., 0., 1.),
                 texture: images.add(uv_debug_texture()),
+                alpha_mode: AlphaMode::Opaque,
             }),
             transform: Transform::from_xyz(-4., 0., 0.),
             ..Default::default()
@@ -140,6 +141,7 @@ fn setup(
         material: materials2.add(StandardParticle {
             base_color: LinearRgba::new(0., 0., 2., 1.),
             texture: images.add(uv_debug_texture()),
+            alpha_mode: AlphaMode::Opaque,
         }),
         transform: Transform::from_xyz(4., 0., 0.),
         ..Default::default()
