@@ -4,7 +4,10 @@
 use std::f32::consts::PI;
 
 use berdicles::{
-    shader::{PARTICLE_VERTEX_IN, PARTICLE_VERTEX_OUT}, util::into_rng, ExpirationState, OneShotParticleInstance, Particle, ParticleMaterialPlugin, ParticlePlugin, ParticleSystem, StandardParticle
+    shader::{PARTICLE_VERTEX_IN, PARTICLE_VERTEX_OUT},
+    util::into_rng,
+    ExpirationState, OneShotParticleInstance, Particle, ParticleMaterialPlugin, ParticlePlugin,
+    ParticleSystem, StandardParticle,
 };
 use bevy::{
     diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin},
@@ -79,7 +82,9 @@ fn main() {
                     ..Default::default()
                 }),
         )
-        .add_plugins(ParticleMaterialPlugin::<ExtendedMaterial<StandardParticle, GrassMat>>::new(None))
+        .add_plugins(ParticleMaterialPlugin::<
+            ExtendedMaterial<StandardParticle, GrassMat>,
+        >::new(None))
         .add_plugins(|a: &mut App| {
             a.world_mut()
                 .resource_mut::<Assets<Shader>>()
@@ -96,7 +101,6 @@ fn main() {
         })
         .run();
 }
-
 
 #[derive(Debug, Clone, Copy)]
 pub struct MyParticle {
@@ -163,7 +167,11 @@ fn setup(
     for _ in 0..10 {
         commands.spawn((
             MaterialMeshBundle {
-                mesh: meshes.add(Mesh::from(Plane3d::new(Vec3::Z, Vec2::splat(0.4)).mesh().subdivisions(1))),
+                mesh: meshes.add(Mesh::from(
+                    Plane3d::new(Vec3::Z, Vec2::splat(0.4))
+                        .mesh()
+                        .subdivisions(1),
+                )),
                 material: mats.add(ExtendedMaterial {
                     base: StandardParticle {
                         base_color: LinearRgba::WHITE,
@@ -179,7 +187,6 @@ fn setup(
             OneShotParticleInstance::new(MySpawner),
         ));
     }
-    
 
     commands.spawn(PointLightBundle {
         point_light: PointLight {
@@ -214,8 +221,8 @@ fn update(
 ) {
     for mat in mats.iter_mut() {
         mat.1.extension.wind = Vec2::new(
-            noise.x.get([time.elapsed_seconds_f64()]) as f32, 
-            noise.y.get([time.elapsed_seconds_f64()]) as f32
+            noise.x.get([time.elapsed_seconds_f64()]) as f32,
+            noise.y.get([time.elapsed_seconds_f64()]) as f32,
         )
     }
 }

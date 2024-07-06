@@ -87,7 +87,8 @@ impl<T: Copy, const N: usize> RingBuffer<T, N> {
         }
     }
 
-    /// Iterate and retains items while `f` returns true, only pops items from the back.
+    /// Iterates and pops an item whenever function returns false.
+    /// Should only be used if items are ordered.
     pub fn retain_mut_ordered(&mut self, mut f: impl FnMut(&mut T) -> bool) {
         fn assume_init<A>(x: &mut MaybeUninit<A>) -> &mut A {
             unsafe { x.assume_init_mut() }
