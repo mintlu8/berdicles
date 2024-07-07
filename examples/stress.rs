@@ -1,5 +1,5 @@
-//! This example demonstrates the built-in 3d shapes in Bevy.
-//! The scene includes a patterned texture and a rotation for visualizing the normals and UVs.
+//! This example demonstrates 
+//! the basics while serving as a stress test.
 
 use berdicles::{
     util::{random_sphere, transform_from_derivative},

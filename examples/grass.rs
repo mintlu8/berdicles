@@ -1,5 +1,10 @@
-//! This example demonstrates the built-in 3d shapes in Bevy.
-//! The scene includes a patterned texture and a rotation for visualizing the normals and UVs.
+//! This example demonstrates how to make grass in berdicle.
+//!
+//! # Note
+//! 
+//! Don't actually make grass in berdicle unless there are no better alternatives,
+//! the instance buffer berdicle uses is about 5 times larger than what a grass
+//! blade/clump actually needs, which is more taxing on the GPU than a dedicated solution.
 
 use std::f32::consts::PI;
 
@@ -144,7 +149,7 @@ impl ParticleSystem for MySpawner {
     }
 
     fn spawn_step(&mut self, _: f32) -> usize {
-        50000
+        80000
     }
 
     fn build_particle(&self, seed: f32) -> Self::Particle {
@@ -164,29 +169,27 @@ fn setup(
         ..Default::default()
     });
 
-    for _ in 0..10 {
-        commands.spawn((
-            MaterialMeshBundle {
-                mesh: meshes.add(Mesh::from(
-                    Plane3d::new(Vec3::Z, Vec2::splat(0.4))
-                        .mesh()
-                        .subdivisions(1),
-                )),
-                material: mats.add(ExtendedMaterial {
-                    base: StandardParticle {
-                        base_color: LinearRgba::WHITE,
-                        texture: server.load("grass.png"),
-                        alpha_mode: AlphaMode::Blend,
-                    },
-                    extension: GrassMat {
-                        wind: Vec2::new(1., 1.),
-                    },
-                }),
-                ..Default::default()
-            },
-            OneShotParticleInstance::new(MySpawner),
-        ));
-    }
+    commands.spawn((
+        MaterialMeshBundle {
+            mesh: meshes.add(Mesh::from(
+                Plane3d::new(Vec3::Z, Vec2::splat(0.4))
+                    .mesh()
+                    .subdivisions(1),
+            )),
+            material: mats.add(ExtendedMaterial {
+                base: StandardParticle {
+                    base_color: LinearRgba::WHITE,
+                    texture: server.load("grass.png"),
+                    alpha_mode: AlphaMode::Blend,
+                },
+                extension: GrassMat {
+                    wind: Vec2::new(1., 1.),
+                },
+            }),
+            ..Default::default()
+        },
+        OneShotParticleInstance::new(MySpawner),
+    ));
 
     commands.spawn(PointLightBundle {
         point_light: PointLight {

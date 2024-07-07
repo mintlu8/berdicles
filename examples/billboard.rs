@@ -1,5 +1,4 @@
-//! This example demonstrates the built-in 3d shapes in Bevy.
-//! The scene includes a patterned texture and a rotation for visualizing the normals and UVs.
+//! This example demonstrates how to render mesh that always faces the camera.
 
 use berdicles::{
     util::{random_cone, random_quat},
