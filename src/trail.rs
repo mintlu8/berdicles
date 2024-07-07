@@ -152,6 +152,9 @@ pub fn trail_rendering(
         let Ok((mut particle, buffer)) = particles.get_mut(trail.0) else {
             continue;
         };
+        if buffer.is_uninit() {
+            continue;
+        }
         let Some(trail) = particle.as_trail_particle_system() else {
             continue;
         };
