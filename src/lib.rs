@@ -180,7 +180,7 @@ impl ExpirationState {
     }
 
     /// Returns [`ExpirationState::Fizzle`] if true.
-    pub const fn fizzle_if(&self, cond: bool) -> Self {
+    pub const fn fizzle_if(cond: bool) -> Self {
         if cond {
             Self::Fizzle
         } else {
@@ -189,7 +189,7 @@ impl ExpirationState {
     }
 
     /// Returns [`ExpirationState::Explode`] if true.
-    pub const fn explode_if(&self, cond: bool) -> Self {
+    pub const fn explode_if(cond: bool) -> Self {
         if cond {
             Self::Explode
         } else {
@@ -232,10 +232,11 @@ pub trait Particle: Copy + 'static {
 
     /// Update and write events to a buffer.
     fn update_with_event_buffer(&mut self, dt: f32, buffer: &mut ParticleEventBuffer) {
-        if self.is_expired() {
+        let is_expired = self.is_expired();
+        self.update(dt);
+        if is_expired {
             return;
         }
-        self.update(dt);
         let expr = self.expiration_state();
         if expr.is_expired() {
             buffer.push(ParticleEvent {
@@ -352,7 +353,7 @@ pub trait ParticleSystem {
     /// # */
     /// ```
     #[allow(unused_variables)]
-    fn apply_meta(&mut self, command: &dyn Any) {}
+    fn apply_meta(&mut self, command: &dyn Any, buffer: &mut ParticleBuffer) {}
 
     /// Optionally update the position of the spawner,
     /// by default only called if `WORLD_SPACE` and [`GlobalTransform`] is changed.
@@ -402,7 +403,7 @@ pub trait ErasedParticleSystem: Send + Sync {
     #[allow(unused_variables)]
     fn update_position(&mut self, transform: &GlobalTransform);
     /// Perform a meta action on the ParticleSystem.
-    fn apply_meta(&mut self, command: &dyn Any);
+    fn apply_meta(&mut self, command: &dyn Any, buffer: &mut ParticleBuffer);
     fn extract(
         &self,
         buffer: &ParticleBuffer,
@@ -416,6 +417,10 @@ pub trait ErasedParticleSystem: Send + Sync {
     fn as_event_particle_system(&mut self) -> Option<&mut dyn ErasedEventParticleSystem>;
     /// Downcast into a [`TrailParticleSystem`];
     fn as_trail_particle_system(&mut self) -> Option<&mut dyn TrailParticleSystem>;
+    /// Checks if all particles and trails are despawned.
+    ///
+    /// Be careful this is usually true on the first frame as well.
+    fn should_despawn(&mut self, buffer: &ParticleBuffer) -> bool;
 }
 
 /// Component form of a type erased [`ParticleSystem`].
@@ -567,8 +572,8 @@ where
         ParticleSystem::update_position(self, transform)
     }
 
-    fn apply_meta(&mut self, command: &dyn Any) {
-        ParticleSystem::apply_meta(self, command)
+    fn apply_meta(&mut self, command: &dyn Any, buffer: &mut ParticleBuffer) {
+        ParticleSystem::apply_meta(self, command, buffer)
     }
 
     #[allow(clippy::collapsible_else_if)]
@@ -632,6 +637,17 @@ where
     fn as_trail_particle_system(&mut self) -> Option<&mut dyn TrailParticleSystem> {
         ParticleSystem::as_trail_particle_system(self)
     }
+
+    fn should_despawn(&mut self, buffer: &ParticleBuffer) -> bool {
+        if buffer.len != 0 {
+            return false;
+        }
+        if let Some(trails) = self.as_trail_particle_system() {
+            trails.should_despawn(buffer)
+        } else {
+            true
+        }
+    }
 }
 
 impl Debug for dyn ErasedParticleSystem {
@@ -653,6 +669,9 @@ impl ExtractComponent for ExtractedParticleBuffer {
     fn extract_component(
         (system, buffer, transform, billboard): QueryItem<'_, Self::QueryData>,
     ) -> Option<Self::Out> {
+        if buffer.is_uninit() {
+            return None;
+        }
         let mut lock = buffer.extracted_allocation.lock().unwrap();
         if let Some(vec) = Arc::get_mut(&mut lock) {
             system.extract(buffer, transform, billboard.map(|x| x.0), vec);

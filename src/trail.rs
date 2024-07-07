@@ -13,7 +13,7 @@ use bevy::{
     },
 };
 
-use crate::{Particle, ParticleBuffer, ParticleInstance, ParticleSystem};
+use crate::{Particle, ParticleBuffer, ParticleBufferStrategy, ParticleInstance, ParticleSystem};
 
 /// A buffer of vertices on a curve.
 ///
@@ -56,6 +56,8 @@ pub trait TrailParticleSystem {
     fn default_mesh(&self) -> Mesh;
     /// Build a trail [`Mesh`].
     fn build_trail(&self, buffer: &ParticleBuffer, mesh: &mut Mesh);
+    /// Returns true if all trails are despawned.
+    fn should_despawn(&self, buffer: &ParticleBuffer) -> bool;
 }
 
 impl<T> TrailParticleSystem for T
@@ -74,6 +76,19 @@ where
             for trail in detached {
                 trail.build_trail(mesh);
             }
+        }
+    }
+
+    fn should_despawn(&self, buffer: &ParticleBuffer) -> bool {
+        match T::STRATEGY {
+            ParticleBufferStrategy::Retain => buffer
+                .detached::<<T::Particle as TrailedParticle>::TrailBuffer>()
+                .map(|x| x.is_empty())
+                .unwrap_or(true),
+            ParticleBufferStrategy::RingBuffer => buffer
+                .get::<T::Particle>()
+                .iter()
+                .all(|x| x.as_trail_buffer().expired()),
         }
     }
 }

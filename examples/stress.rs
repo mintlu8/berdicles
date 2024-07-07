@@ -1,4 +1,4 @@
-//! This example demonstrates 
+//! This example demonstrates
 //! the basics while serving as a stress test.
 
 use berdicles::{

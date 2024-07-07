@@ -1,6 +1,8 @@
 use std::mem::MaybeUninit;
 
-/// A domain specific data structure for implementing [`TrailBuffer`](crate::trail::TrailBuffer).
+/// A fixed sized ring buffer that is [`Copy`].
+/// 
+/// This is a domain specific data structure for implementing [`TrailBuffer`](crate::trail::TrailBuffer).
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct RingBuffer<T: Copy, const N: usize> {
@@ -87,7 +89,7 @@ impl<T: Copy, const N: usize> RingBuffer<T, N> {
         }
     }
 
-    /// Iterates and pops an item whenever function returns false.
+    /// Iterates and pops an item whenever the function returns false.
     /// Should only be used if items are ordered.
     pub fn retain_mut_ordered(&mut self, mut f: impl FnMut(&mut T) -> bool) {
         fn assume_init<A>(x: &mut MaybeUninit<A>) -> &mut A {

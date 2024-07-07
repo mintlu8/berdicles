@@ -1,4 +1,4 @@
-//! This example demonstrates 
+//! This example demonstrates
 //! how to reuse a simulation result with different material and mesh.
 
 use berdicles::{

@@ -183,7 +183,7 @@ impl<M: Material> Default for ParticleRefBundle<M> {
 }
 
 /// A Bundle of a particle trails.
-#[derive(Debug, Bundle)]
+#[derive(Debug, Bundle, Default)]
 pub struct ParticleTrailsBundle<M: Material> {
     /// A reference to a [`ParticleSystem`](crate::ParticleSystem).
     pub of: TrailMeshOf,

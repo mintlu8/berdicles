@@ -1,7 +1,7 @@
 //! This example demonstrates how to make grass in berdicle.
 //!
 //! # Note
-//! 
+//!
 //! Don't actually make grass in berdicle unless there are no better alternatives,
 //! the instance buffer berdicle uses is about 5 times larger than what a grass
 //! blade/clump actually needs, which is more taxing on the GPU than a dedicated solution.
