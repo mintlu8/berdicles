@@ -24,7 +24,7 @@ use bevy::{
         renderer::RenderDevice,
         Render, RenderApp, RenderSet,
     },
-    time::Time,
+    time::{Time, Virtual},
     transform::{
         components::{GlobalTransform, Transform},
         systems::{propagate_transforms, sync_simple_transforms},
@@ -76,6 +76,7 @@ impl Plugin for ParticlePlugin {
         app.add_plugins(ExtractComponentPlugin::<ParticleRef>::default());
         app.add_plugins(ExtractComponentPlugin::<OneShotParticleBuffer>::default());
         app.add_plugins(ParticleMaterialPlugin::<StandardParticle>::default());
+        app.add_plugins(ParticleMaterialPlugin::<StandardParticle<false>>::new(None));
         app.add_plugins(ParticleMaterialPlugin::<DebugParticle>::default());
         app.add_systems(Update, particle_system);
         app.add_systems(Update, trail_rendering.after(particle_system));
@@ -94,7 +95,7 @@ impl Plugin for ParticlePlugin {
 
 /// The main system of `berdicle`, runs in [`Update`].
 pub fn particle_system(
-    time: Res<Time>,
+    time: Res<Time<Virtual>>,
     mut particles: Query<(
         Entity,
         &mut ParticleInstance,

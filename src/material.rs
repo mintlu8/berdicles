@@ -23,7 +23,7 @@ use crate::{
 
 /// [`Material`] that displays an unlit combination of `base_color` and `texture` on a mesh.
 #[derive(Debug, Clone, Default, PartialEq, TypePath, Asset, AsBindGroup)]
-pub struct StandardParticle {
+pub struct StandardParticle<const BACKFACE_CULLING: bool = true> {
     #[uniform(0)]
     pub base_color: LinearRgba,
     #[texture(1)]
@@ -32,7 +32,7 @@ pub struct StandardParticle {
     pub alpha_mode: AlphaMode,
 }
 
-impl Material for StandardParticle {
+impl<const CULL: bool> Material for StandardParticle<CULL> {
     fn vertex_shader() -> ShaderRef {
         ShaderRef::Handle(PARTICLE_VERTEX.clone())
     }
