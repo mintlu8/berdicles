@@ -1,22 +1,19 @@
 //! This example demonstrates how to render trails behind particles.
 
 use berdicles::{
-    trail::{TrailBuffer, TrailMeshBuilder, TrailMeshOf, TrailParticleSystem, TrailedParticle},
+    templates::{CameraDirection, ExpDecayTrail, WidthCurve},
+    trail::{TrailBuffer, TrailMeshOf, TrailParticleSystem, TrailedParticle},
     util::transform_from_derivative,
-    ExpirationState, Particle, ParticleInstance, ParticlePlugin, ParticleSystem,
-    ParticleSystemBundle, RingBuffer, StandardParticle,
+    ExpirationState, Particle, ParticleBuffer, ParticleInstance, ParticlePlugin, ParticleSystem,
+    ParticleSystemBundle, StandardParticle,
 };
 use bevy::{
-    diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin},
-    pbr::{NotShadowCaster, NotShadowReceiver},
-    prelude::*,
-    render::{
+    diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin}, pbr::{NotShadowCaster, NotShadowReceiver}, prelude::*, render::{
         render_asset::RenderAssetUsages,
         render_resource::{Extent3d, TextureDimension, TextureFormat},
-    },
-    window::PresentMode,
+    }, window::PresentMode
 };
-use std::f32::consts::PI;
+use std::{any::Any, f32::consts::PI};
 
 fn main() {
     App::new()
@@ -35,6 +32,8 @@ fn main() {
         .add_plugins(ParticlePlugin)
         .add_systems(Startup, setup)
         .add_systems(Update, fps)
+        .add_systems(Update, particles)
+        .add_systems(Update, spin.before(particles))
         .run();
 }
 
@@ -47,8 +46,7 @@ pub struct MainParticle {
     pub seed: f32,
     pub life_time: f32,
     pub meta: f32,
-    pub trail_meta: f32,
-    pub trail: Trail,
+    pub trail: ExpDecayTrail<16>,
 }
 
 impl Particle for MainParticle {
@@ -82,16 +80,8 @@ impl Particle for MainParticle {
 
     fn update(&mut self, dt: f32) {
         self.life_time += dt;
-        self.trail_meta += dt * 16.;
         self.trail.update(dt);
-        if self.trail_meta >= 1. {
-            self.trail_meta = self.trail_meta.fract();
-            self.trail.0.push(TrailVertex {
-                position: self.get_position(),
-                tangent: Vec3::X,
-                width: 0.2,
-            })
-        }
+        self.trail.set_first(self.get_position())
     }
 
     fn expiration_state(&self) -> ExpirationState {
@@ -103,43 +93,14 @@ impl Particle for MainParticle {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct TrailVertex {
-    pub position: Vec3,
-    pub tangent: Vec3,
-    pub width: f32,
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct Trail(RingBuffer<TrailVertex, 16>);
-
-impl TrailBuffer for Trail {
-    fn update(&mut self, dt: f32) {
-        self.0.retain_mut_ordered(|item| {
-            item.width -= dt * 0.3;
-            item.width > 0.
-        });
-    }
-
-    fn expired(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    fn build_trail(&self, mesh: &mut Mesh) {
-        TrailMeshBuilder::new(mesh).build_plane(
-            self.0.iter().map(|x| (x.position, x.tangent, x.width)),
-            0.0..1.0,
-        )
-    }
-}
-
 pub struct MainSpawner(f32);
 
 impl ParticleSystem for MainSpawner {
     type Particle = MainParticle;
+    //const STRATEGY: ParticleBufferStrategy = ParticleBufferStrategy::RingBuffer;
 
     fn capacity(&self) -> usize {
-        200
+        100
     }
 
     fn spawn_step(&mut self, time: f32) -> usize {
@@ -154,18 +115,35 @@ impl ParticleSystem for MainSpawner {
             seed,
             life_time: 0.,
             meta: 0.,
-            trail: Trail::default(),
-            trail_meta: 0.,
+            trail: ExpDecayTrail {
+                width_curve: WidthCurve::Fac(|x| (1. - x * x / 2.) * 0.25),
+                ..Default::default()
+            },
         }
     }
 
     fn as_trail_particle_system(&mut self) -> Option<&mut dyn TrailParticleSystem> {
         Some(self)
     }
+
+    fn apply_meta(&mut self, command: &dyn Any, buffer: &mut ParticleBuffer) {
+        if !buffer.is_uninit() {
+            if let Some(cam) = command.downcast_ref::<CameraDirection>() {
+                for particle in buffer.get_mut::<MainParticle>() {
+                    particle.trail.camera = *cam
+                }
+                if let Some(detached) = buffer.detached_mut::<ExpDecayTrail<16>>() {
+                    for item in detached {
+                        item.camera = *cam
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl TrailedParticle for MainParticle {
-    type TrailBuffer = Trail;
+    type TrailBuffer = ExpDecayTrail<16>;
 
     fn as_trail_buffer(&self) -> Self::TrailBuffer {
         self.trail
@@ -287,5 +265,36 @@ fn fps(diagnostics: Res<DiagnosticsStore>, mut query: Query<&mut Text>) {
         .and_then(|fps| fps.smoothed())
     {
         query.single_mut().sections[0].value = format!("FPS: {:.2}", value)
+    }
+}
+
+fn particles(
+    mut query: Query<(&mut ParticleInstance, &mut ParticleBuffer)>,
+    camera: Query<(&Projection, &GlobalTransform)>,
+) {
+    let Ok((camera, transform)) = camera.get_single() else {
+        return;
+    };
+    let cam = match camera {
+        Projection::Perspective(_) => CameraDirection::Perspective {
+            position: transform.translation(),
+        },
+        Projection::Orthographic(_) => CameraDirection::Orthographic {
+            direction: transform.forward().into(),
+        },
+    };
+    for (mut particle, mut buffer) in query.iter_mut() {
+        particle.apply_meta(&cam, &mut buffer)
+    }
+}
+
+fn spin(
+    time: Res<Time<Virtual>>,
+    mut query: Query<&mut Transform, With<Camera>>
+) {
+    if let Ok(mut transform) = query.get_single_mut() {
+        transform.rotate_around(Vec3::ZERO, Quat::from_rotation_y(
+            time.delta_seconds() / 4.
+        ))
     }
 }

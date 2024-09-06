@@ -50,6 +50,7 @@ mod ring_buffer;
 pub use ring_buffer::RingBuffer;
 mod billboard;
 pub use billboard::*;
+pub mod templates;
 
 /// Plugin for `berdicle`.
 ///
@@ -272,7 +273,7 @@ pub trait ParticleSystem {
     ///
     /// * Retain(default): Remove expired particles by moving alive particles in front.
     /// * RingBuffer: Particles are not removed explicitly, but can expire and be reused later.
-    /// Should only be used if lifetime is constant and capacity is well predicted.
+    ///   Should only be used if lifetime is constant and capacity is well predicted.
     ///
     /// If rendering trails using ring buffer, capacity for detached trails should be reserved.
     const STRATEGY: ParticleBufferStrategy = ParticleBufferStrategy::Retain;

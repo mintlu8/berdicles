@@ -1,7 +1,7 @@
 use std::mem::MaybeUninit;
 
 /// A fixed sized ring buffer that is [`Copy`].
-/// 
+///
 /// This is a domain specific data structure for implementing [`TrailBuffer`](crate::trail::TrailBuffer).
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]

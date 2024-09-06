@@ -8,7 +8,7 @@ use std::ops::{Deref, DerefMut};
 use crate::{ErasedParticleSystem, ExpirationState, Particle, ParticleBuffer, ParticleSystem};
 
 /// Event on individual particle.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParticleEventType {
     Explode,
     Fizzle,

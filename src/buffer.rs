@@ -268,6 +268,15 @@ impl ParticleBuffer {
             .map(|x| x.as_ref())
     }
 
+
+    /// Returns a reference to detached curves.
+    pub fn detached_mut<T: TrailBuffer>(&mut self) -> Option<&mut [T]> {
+        self.detached_trails
+            .as_mut()
+            .and_then(|x| x.downcast_mut::<Vec<T>>())
+            .map(|x| x.as_mut())
+    }
+
     /// Detach a slice of particles into trail rendering.
     pub fn detach_slice<T: TrailedParticle>(&mut self, slice: Range<usize>) {
         let buf = match self.particle_type {
