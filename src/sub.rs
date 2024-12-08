@@ -38,17 +38,17 @@ pub struct ParticleEvent {
 
 /// Parent of the particle, if present will read data/event from the parent's particle buffer.
 #[derive(Debug, Component, Clone, Copy)]
-pub struct ParticleParent(pub Entity);
+pub struct ProjectileParent(pub Entity);
 
-impl Default for ParticleParent {
+impl Default for ProjectileParent {
     fn default() -> Self {
-        ParticleParent(Entity::PLACEHOLDER)
+        ProjectileParent(Entity::PLACEHOLDER)
     }
 }
 
-impl From<Entity> for ParticleParent {
+impl From<Entity> for ProjectileParent {
     fn from(value: Entity) -> Self {
-        ParticleParent(value)
+        ProjectileParent(value)
     }
 }
 

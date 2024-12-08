@@ -5,38 +5,26 @@ use std::{
     any::Any,
     fmt::Debug,
     ops::{Deref, DerefMut, Range},
-    sync::Arc,
 };
 
 use bevy::{
-    app::{Plugin, PostUpdate, Update},
+    app::{Plugin, Update},
     asset::Assets,
     color::{ColorToComponents, Srgba},
-    ecs::{
-        component::{ComponentHooks, StorageType},
-        query::QueryItem,
-    },
     math::{Quat, Vec3},
-    prelude::{Commands, Component, DetectChanges, Entity, IntoSystemConfigs, Query, Ref, Res},
-    render::{
-        extract_component::{ExtractComponent, ExtractComponentPlugin},
-        render_resource::{BufferInitDescriptor, BufferUsages, Shader},
-        renderer::RenderDevice,
-        Render, RenderApp, RenderSet,
-    },
+    prelude::{Component, DetectChanges, Entity, IntoSystemConfigs, Query, Ref, Res, Visibility},
+    render::{render_resource::Shader, ExtractSchedule, RenderApp},
     time::{Time, Virtual},
-    transform::{
-        components::{GlobalTransform, Transform},
-        systems::{propagate_transforms, sync_simple_transforms},
-    },
+    transform::components::{GlobalTransform, Transform},
 };
 use noop::NoopParticleSystem;
 
+mod extract;
+pub use extract::*;
 mod material;
 pub use material::*;
 mod pipeline;
-use pipeline::ParticleInstanceBuffer;
-pub use pipeline::ParticleMaterialPlugin;
+pub use pipeline::ProjectileMaterialPlugin;
 pub mod shader;
 mod sub;
 pub use sub::*;
@@ -48,8 +36,8 @@ use trail::{trail_rendering, TrailParticleSystem};
 mod noop;
 mod ring_buffer;
 pub use ring_buffer::RingBuffer;
-mod billboard;
-pub use billboard::*;
+// mod billboard;
+// pub use billboard::*;
 pub mod templates;
 
 /// Plugin for `berdicle`.
@@ -57,56 +45,45 @@ pub mod templates;
 /// Adds support for [`StandardParticle`],
 /// other particle materials must be manually added via
 /// [`ParticleMaterialPlugin`].
-pub struct ParticlePlugin;
+pub struct ProjectilePlugin;
 
-impl Plugin for ParticlePlugin {
+impl Plugin for ProjectilePlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.world_mut().resource_mut::<Assets<Shader>>().insert(
             &shader::PARTICLE_VERTEX,
-            Shader::from_wgsl(shader::SHADER_VERTEX, "berdicle/particle_vertex.wgsl"),
+            Shader::from_wgsl(
+                include_str!("./shader.wgsl"),
+                "berdicle/particle_vertex.wgsl",
+            ),
         );
         app.world_mut().resource_mut::<Assets<Shader>>().insert(
             &shader::PARTICLE_FRAGMENT,
-            Shader::from_wgsl(shader::SHADER_FRAGMENT, "berdicle/particle_fragment.wgsl"),
+            Shader::from_wgsl(
+                include_str!("./shader.wgsl"),
+                "berdicle/particle_fragment.wgsl",
+            ),
         );
-        app.world_mut().resource_mut::<Assets<Shader>>().insert(
-            &shader::PARTICLE_DBG_FRAGMENT,
-            Shader::from_wgsl(shader::SHADER_DBG, "berdicle/particle_dbg_fragment.wgsl"),
-        );
-        app.add_plugins(ExtractComponentPlugin::<ExtractedParticleBuffer>::default());
-        app.add_plugins(ExtractComponentPlugin::<ParticleRef>::default());
-        app.add_plugins(ExtractComponentPlugin::<OneShotParticleBuffer>::default());
-        app.add_plugins(ParticleMaterialPlugin::<StandardParticle>::default());
-        app.add_plugins(ParticleMaterialPlugin::<StandardParticle<false>>::new(None));
-        app.add_plugins(ParticleMaterialPlugin::<DebugParticle>::default());
-        app.add_systems(Update, particle_system);
-        app.add_systems(Update, trail_rendering.after(particle_system));
-        app.add_systems(
-            PostUpdate,
-            billboard_system
-                .after(propagate_transforms)
-                .after(sync_simple_transforms),
-        );
-        app.sub_app_mut(RenderApp).add_systems(
-            Render,
-            particle_ref_system.in_set(RenderSet::PrepareResourcesFlush),
-        );
+        app.add_plugins(ProjectileMaterialPlugin::<StandardProjectile>::default());
+        app.add_systems(Update, projectile_simulation_system);
+        app.add_systems(Update, trail_rendering.after(projectile_simulation_system));
+        app.sub_app_mut(RenderApp)
+            .add_systems(ExtractSchedule, (extract_clean, extract_buffers).chain());
     }
 }
 
 /// The main system of `berdicle`, runs in [`Update`].
-pub fn particle_system(
+pub fn projectile_simulation_system(
     time: Res<Time<Virtual>>,
     mut particles: Query<(
         Entity,
-        &mut ParticleInstance,
+        &mut ProjectileCluster,
         &mut ParticleBuffer,
         Ref<GlobalTransform>,
         Option<&mut ParticleEventBuffer>,
-        Option<&ParticleParent>,
+        Option<&ProjectileParent>,
     )>,
 ) {
-    let dt = time.delta_seconds();
+    let dt = time.delta_secs();
     particles
         .par_iter_mut()
         .for_each(|(_, mut system, mut buffer, transform, events, _)| {
@@ -126,7 +103,7 @@ pub fn particle_system(
 
     // Safety: parent is checked to not be the same entity.
     for (entity, mut system, mut buffer, _, _, parent) in unsafe { particles.iter_unsafe() } {
-        let Some(ParticleParent(parent)) = parent else {
+        let Some(ProjectileParent(parent)) = parent else {
             continue;
         };
         if entity == *parent {
@@ -278,6 +255,9 @@ pub trait ParticleSystem {
     /// If rendering trails using ring buffer, capacity for detached trails should be reserved.
     const STRATEGY: ParticleBufferStrategy = ParticleBufferStrategy::Retain;
 
+    /// If not 0, render ribbons.
+    const RIBBON_LENGTH: usize = 0;
+
     /// Particle type of the system.
     ///
     /// # Panics
@@ -411,7 +391,7 @@ pub trait ErasedParticleSystem: Send + Sync {
         buffer: &ParticleBuffer,
         transform: &GlobalTransform,
         billboard: Option<Quat>,
-        vec: &mut Vec<ExtractedParticle>,
+        vec: &mut Vec<ExtractedProjectile>,
     );
     /// Downcast into a [`SubParticleSystem`];
     fn as_sub_particle_system(&mut self) -> Option<&mut dyn ErasedSubParticleSystem>;
@@ -427,15 +407,16 @@ pub trait ErasedParticleSystem: Send + Sync {
 
 /// Component form of a type erased [`ParticleSystem`].
 #[derive(Debug, Component)]
-pub struct ParticleInstance(Box<dyn ErasedParticleSystem>);
+#[require(ParticleBuffer, Transform, Visibility)]
+pub struct ProjectileCluster(Box<dyn ErasedParticleSystem>);
 
-impl Default for ParticleInstance {
+impl Default for ProjectileCluster {
     fn default() -> Self {
-        ParticleInstance::new(NoopParticleSystem)
+        ProjectileCluster::new(NoopParticleSystem)
     }
 }
 
-impl ParticleInstance {
+impl ProjectileCluster {
     pub fn new<P: ParticleSystem + Send + Sync + 'static>(particles: P) -> Self {
         Self(Box::new(particles))
     }
@@ -453,7 +434,7 @@ impl ParticleInstance {
     }
 }
 
-impl Deref for ParticleInstance {
+impl Deref for ProjectileCluster {
     type Target = dyn ErasedParticleSystem;
 
     fn deref(&self) -> &Self::Target {
@@ -461,7 +442,7 @@ impl Deref for ParticleInstance {
     }
 }
 
-impl DerefMut for ParticleInstance {
+impl DerefMut for ProjectileCluster {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.as_mut()
     }
@@ -584,7 +565,7 @@ where
         buffer: &ParticleBuffer,
         transform: &GlobalTransform,
         billboard: Option<Quat>,
-        vec: &mut Vec<ExtractedParticle>,
+        vec: &mut Vec<ExtractedProjectile>,
     ) {
         vec.clear();
         vec.extend(
@@ -614,7 +595,7 @@ where
                             transform.mul_transform(x.get_transform()).compute_matrix()
                         }
                     };
-                    ExtractedParticle {
+                    ExtractedProjectile {
                         index: x.get_index(),
                         lifetime: x.get_lifetime(),
                         seed: x.get_seed(),
@@ -655,144 +636,5 @@ where
 impl Debug for dyn ErasedParticleSystem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.as_debug().fmt(f)
-    }
-}
-
-impl ExtractComponent for ExtractedParticleBuffer {
-    type QueryData = (
-        &'static ParticleInstance,
-        &'static ParticleBuffer,
-        &'static GlobalTransform,
-        Option<&'static BillboardParticle>,
-    );
-    type QueryFilter = ();
-    type Out = ExtractedParticleBuffer;
-
-    fn extract_component(
-        (system, buffer, transform, billboard): QueryItem<'_, Self::QueryData>,
-    ) -> Option<Self::Out> {
-        if buffer.is_uninit() {
-            return None;
-        }
-        let mut lock = buffer.extracted_allocation.lock().unwrap();
-        if let Some(vec) = Arc::get_mut(&mut lock) {
-            system.extract(buffer, transform, billboard.map(|x| x.0), vec);
-            Some(ExtractedParticleBuffer(lock.clone()))
-        } else {
-            None
-        }
-    }
-}
-
-impl ExtractComponent for ParticleRef {
-    type QueryData = &'static ParticleRef;
-    type QueryFilter = ();
-    type Out = ParticleRef;
-
-    fn extract_component(r: QueryItem<'_, Self::QueryData>) -> Option<Self::Out> {
-        Some(*r)
-    }
-}
-
-/// Create a cheap copy of a [`ParticleInstance`]'s output
-/// to use with a different set of material and mesh.
-///
-/// See also [`ParticleRefBundle`].
-#[derive(Debug, Component, Clone, Copy)]
-pub struct ParticleRef(pub Entity);
-
-impl Default for ParticleRef {
-    fn default() -> Self {
-        ParticleRef(Entity::PLACEHOLDER)
-    }
-}
-
-impl From<Entity> for ParticleRef {
-    fn from(value: Entity) -> Self {
-        ParticleRef(value)
-    }
-}
-
-fn particle_ref_system(
-    mut commands: Commands,
-    particles: Query<&ParticleInstanceBuffer>,
-    query: Query<(Entity, &ParticleRef)>,
-) {
-    for (entity, ParticleRef(parent)) in &query {
-        if let Ok(buffer) = particles.get(*parent) {
-            commands.entity(entity).insert(buffer.clone());
-        }
-    }
-}
-
-/// A [`ParticleSystem`] that spawns once and maintains a GPU side instance buffer [`OneShotParticleBuffer`], i.e. grass.
-pub struct OneShotParticleInstance(Vec<ExtractedParticle>);
-
-impl OneShotParticleInstance {
-    pub fn new<P: ParticleSystem>(mut particles: P) -> Self {
-        let count = particles.spawn_step(0.);
-        let mut buf = Vec::with_capacity(count);
-        for _ in 0..count {
-            let seed = particles.rng();
-            let particle = particles.build_particle(seed);
-            let mat = particle.get_transform().compute_matrix();
-            buf.push(ExtractedParticle {
-                index: particle.get_index(),
-                lifetime: particle.get_lifetime(),
-                fac: particle.get_fac(),
-                seed,
-                transform_x: mat.row(0),
-                transform_y: mat.row(1),
-                transform_z: mat.row(2),
-                color: particle.get_color().to_vec4(),
-            })
-        }
-        Self(buf)
-    }
-}
-
-impl Component for OneShotParticleInstance {
-    const STORAGE_TYPE: StorageType = StorageType::Table;
-
-    fn register_component_hooks(hooks: &mut ComponentHooks) {
-        hooks.on_insert(|mut world, entity, _| {
-            let render_device = world.resource::<RenderDevice>();
-            let Some(item) = world.entity(entity).get::<OneShotParticleInstance>() else {
-                return;
-            };
-            let buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
-                label: Some("particle instance buffer"),
-                contents: bytemuck::cast_slice(&item.0),
-                usage: BufferUsages::VERTEX,
-            });
-            let length = item.0.len();
-            world
-                .commands()
-                .entity(entity)
-                .insert(OneShotParticleBuffer(ParticleInstanceBuffer {
-                    buffer,
-                    length,
-                }))
-                .remove::<OneShotParticleInstance>();
-        });
-    }
-}
-
-/// Handle for a spawned GPU side particle instance buffer.
-#[derive(Component)]
-pub struct OneShotParticleBuffer(ParticleInstanceBuffer);
-
-/// Marker for [`OneShotParticleBuffer`] to use the correct render pipeline.
-#[doc(hidden)]
-#[derive(Component)]
-pub struct OneShotParticleMarker;
-
-impl ExtractComponent for OneShotParticleBuffer {
-    type QueryData = &'static OneShotParticleBuffer;
-    type QueryFilter = ();
-    type Out = (ParticleInstanceBuffer, OneShotParticleMarker);
-
-    fn extract_component(r: QueryItem<'_, Self::QueryData>) -> Option<Self::Out> {
-        Some((r.0.clone(), OneShotParticleMarker))
     }
 }

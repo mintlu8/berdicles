@@ -2,19 +2,12 @@
 
 use berdicles::{
     util::{random_cone, random_quat},
-    BillboardParticle, ExpirationState, Particle, ParticleInstance, ParticlePlugin, ParticleSystem,
-    ParticleSystemBundle, StandardParticle,
+    ExpirationState, Particle, ParticleSystem, ProjectileCluster, ProjectileMat, ProjectilePlugin,
+    StandardProjectile,
 };
-use bevy::{
-    diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin},
-    prelude::*,
-    render::{
-        render_asset::RenderAssetUsages,
-        render_resource::{Extent3d, TextureDimension, TextureFormat},
-    },
-    window::PresentMode,
-};
-use std::f32::consts::PI;
+use bevy::{prelude::*, window::PresentMode};
+use util::{uv_debug_texture, FPSPlugin};
+mod util;
 
 fn main() {
     App::new()
@@ -29,10 +22,9 @@ fn main() {
                     ..Default::default()
                 }),
         )
-        .add_plugins(FrameTimeDiagnosticsPlugin)
-        .add_plugins(ParticlePlugin)
+        .add_plugins(FPSPlugin)
+        .add_plugins(ProjectilePlugin)
         .add_systems(Startup, setup)
-        .add_systems(Update, fps)
         .run();
 }
 
@@ -110,113 +102,71 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut materials2: ResMut<Assets<StandardParticle>>,
+    mut materials2: ResMut<Assets<StandardProjectile>>,
 ) {
-    commands.spawn(TextBundle {
-        text: Text::from_section("FPS: 60.00", Default::default()),
-        ..Default::default()
-    });
-
-    let mesh_handle = meshes
-        .add(Mesh::from(Plane3d::default().mesh()).rotated_by(Quat::from_rotation_x(-PI / 2.0)));
+    let mesh_handle = meshes.add(Mesh::from(
+        Plane3d {
+            normal: Dir3::Z,
+            half_size: Vec2::ONE,
+        }
+        .mesh(),
+    ));
     commands.spawn((
-        ParticleSystemBundle {
-            particle_system: ParticleInstance::new(MySpawner(0.)),
-            mesh: mesh_handle.clone(),
-            material: materials2.add(StandardParticle {
-                base_color: LinearRgba::new(2., 0., 0., 1.),
-                texture: images.add(uv_debug_texture()),
-                alpha_mode: AlphaMode::Opaque,
-            }),
-            transform: Transform::from_xyz(-4., 0., 0.),
+        ProjectileCluster::new(MySpawner(0.)),
+        Mesh3d(mesh_handle.clone()),
+        ProjectileMat(materials2.add(StandardProjectile {
+            base_color: LinearRgba::new(2., 0., 0., 1.),
+            texture: images.add(uv_debug_texture()),
+            alpha_mode: AlphaMode::Opaque,
+            billboard: 1,
             ..Default::default()
-        },
-        BillboardParticle::new(),
+        })),
+        Transform::from_xyz(-4., 0., 0.),
     ));
 
-    commands.spawn(ParticleSystemBundle {
-        particle_system: ParticleInstance::new(MySpawner(0.)),
-        mesh: mesh_handle.clone(),
-        material: materials2.add(StandardParticle {
+    commands.spawn((
+        ProjectileCluster::new(MySpawner(0.)),
+        Mesh3d(mesh_handle.clone()),
+        ProjectileMat(materials2.add(StandardProjectile {
             base_color: LinearRgba::new(0., 0., 2., 1.),
             texture: images.add(uv_debug_texture()),
             alpha_mode: AlphaMode::Opaque,
-        }),
-        transform: Transform::from_xyz(4., 0., 0.),
-        ..Default::default()
-    });
-
-    commands.spawn(MaterialMeshBundle {
-        mesh: mesh_handle.clone(),
-        material: materials.add(StandardMaterial {
-            base_color: LinearRgba::new(2., 2., 0., 1.).into(),
-            base_color_texture: Some(images.add(uv_debug_texture())),
             ..Default::default()
-        }),
-        transform: Transform::from_xyz(0., 0.5, 0.).looking_at(CAM, Vec3::Y),
-        ..default()
-    });
+        })),
+        Transform::from_xyz(4., 0., 0.),
+    ));
 
-    commands.spawn(PointLightBundle {
-        point_light: PointLight {
+    // commands.spawn(MaterialMeshBundle {
+    //     mesh: mesh_handle.clone(),
+    //     material: materials.add(StandardMaterial {
+    //         base_color: LinearRgba::new(2., 2., 0., 1.).into(),
+    //         base_color_texture: Some(images.add(uv_debug_texture())),
+    //         ..Default::default()
+    //     }),
+    //     transform: Transform::from_xyz(0., 0.5, 0.).looking_at(CAM, Vec3::Y),
+    //     ..default()
+    // });
+
+    commands.spawn((
+        PointLight {
             shadows_enabled: true,
             intensity: 10_000_000.,
             range: 100.0,
             shadow_depth_bias: 0.2,
             ..default()
         },
-        transform: Transform::from_xyz(8.0, 16.0, 8.0),
-        ..default()
-    });
+        Transform::from_xyz(8.0, 16.0, 8.0),
+    ));
 
     // ground plane
-    commands.spawn(PbrBundle {
-        mesh: meshes.add(Plane3d::default().mesh().size(50.0, 50.0).subdivisions(10)),
-        material: materials.add(StandardMaterial::from_color(Srgba::GREEN)),
-        transform: Transform::from_xyz(0., 0., 0.),
-        ..default()
-    });
+    commands.spawn((
+        Mesh3d(meshes.add(Plane3d::default().mesh().size(50.0, 50.0).subdivisions(10))),
+        MeshMaterial3d(materials.add(StandardMaterial::from_color(Srgba::GREEN))),
+        Transform::from_xyz(0., 0., 0.),
+    ));
 
-    commands.spawn(Camera3dBundle {
-        transform: Transform::from_translation(CAM).looking_at(Vec3::new(0., 0., 0.), Vec3::Y),
-        ..default()
-    });
-}
-
-/// Creates a colorful test pattern
-fn uv_debug_texture() -> Image {
-    const TEXTURE_SIZE: usize = 8;
-
-    let mut palette: [u8; 32] = [
-        255, 102, 159, 255, 255, 159, 102, 255, 236, 255, 102, 255, 121, 255, 102, 255, 102, 255,
-        198, 255, 102, 198, 255, 255, 121, 102, 255, 255, 236, 102, 255, 255,
-    ];
-
-    let mut texture_data = [0; TEXTURE_SIZE * TEXTURE_SIZE * 4];
-    for y in 0..TEXTURE_SIZE {
-        let offset = TEXTURE_SIZE * y * 4;
-        texture_data[offset..(offset + TEXTURE_SIZE * 4)].copy_from_slice(&palette);
-        palette.rotate_right(4);
-    }
-
-    Image::new_fill(
-        Extent3d {
-            width: TEXTURE_SIZE as u32,
-            height: TEXTURE_SIZE as u32,
-            depth_or_array_layers: 1,
-        },
-        TextureDimension::D2,
-        &texture_data,
-        TextureFormat::Rgba8UnormSrgb,
-        RenderAssetUsages::RENDER_WORLD,
-    )
-}
-
-fn fps(diagnostics: Res<DiagnosticsStore>, mut query: Query<&mut Text>) {
-    if let Some(value) = diagnostics
-        .get(&FrameTimeDiagnosticsPlugin::FPS)
-        .and_then(|fps| fps.smoothed())
-    {
-        query.single_mut().sections[0].value = format!("FPS: {:.2}", value)
-    }
+    commands.spawn((
+        Camera3d::default(),
+        Transform::from_xyz(0.0, 7., 30.0).looking_at(Vec3::new(0., 0., 0.), Vec3::Y),
+    ));
 }

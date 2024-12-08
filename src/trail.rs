@@ -5,7 +5,7 @@ use std::ops::Range;
 use bevy::{
     asset::{Assets, Handle},
     math::{Vec2, Vec3},
-    prelude::{Component, Entity, Query, ResMut, Without},
+    prelude::{Component, Entity, Mesh3d, Query, ResMut, Without},
     render::{
         camera::Camera,
         mesh::{Indices, Mesh, PrimitiveTopology, VertexAttributeValues},
@@ -13,7 +13,7 @@ use bevy::{
     },
 };
 
-use crate::{Particle, ParticleBuffer, ParticleBufferStrategy, ParticleInstance, ParticleSystem};
+use crate::{Particle, ParticleBuffer, ParticleBufferStrategy, ParticleSystem, ProjectileCluster};
 
 /// A buffer of vertices on a curve.
 ///
@@ -145,8 +145,8 @@ impl From<Entity> for TrailMeshOf {
 /// System for rendering trails.
 pub fn trail_rendering(
     mut meshes: ResMut<Assets<Mesh>>,
-    mut particles: Query<(&mut ParticleInstance, &mut ParticleBuffer), Without<Camera>>,
-    mut trails: Query<(&TrailMeshOf, &mut Handle<Mesh>)>,
+    mut particles: Query<(&mut ProjectileCluster, &mut ParticleBuffer), Without<Camera>>,
+    mut trails: Query<(&TrailMeshOf, &mut Mesh3d)>,
 ) {
     for (trail, mut handle) in trails.iter_mut() {
         let Ok((mut particle, buffer)) = particles.get_mut(trail.0) else {
@@ -166,14 +166,14 @@ pub fn trail_rendering(
         if handle.id() == Handle::<Mesh>::default().id() {
             let mut mesh = trail.default_mesh();
             modify(&mut mesh);
-            *handle = meshes.add(mesh);
+            *handle = meshes.add(mesh).into();
         } else {
             match meshes.get_mut(handle.as_ref()) {
                 Some(mesh) => modify(mesh),
                 None => {
                     let mut mesh = trail.default_mesh();
                     modify(&mut mesh);
-                    *handle = meshes.add(mesh);
+                    *handle = meshes.add(mesh).into();
                 }
             }
         }

@@ -1,23 +1,20 @@
 //! This example demonstrates
 //! how to reuse a simulation result with different material and mesh.
+mod util;
 
 use berdicles::{
-    shader::{PARTICLE_VERTEX_IN, PARTICLE_VERTEX_OUT},
     util::{random_cone, transform_from_derivative},
-    ExpirationState, Particle, ParticleInstance, ParticleMaterialPlugin, ParticlePlugin,
-    ParticleRef, ParticleRefBundle, ParticleSystem, ParticleSystemBundle, StandardParticle,
+    ExpirationState, ExtendedProjectileMat, ExtractedProjectile, Particle, ParticleSystem,
+    ProjectileCluster, ProjectileMat, ProjectileMaterialExtension, ProjectileMaterialPlugin,
+    ProjectilePlugin, ProjectileRef, StandardProjectile,
 };
 use bevy::{
-    diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin},
-    pbr::{ExtendedMaterial, MaterialExtension},
     prelude::*,
-    render::{
-        render_asset::RenderAssetUsages,
-        render_resource::{AsBindGroup, Extent3d, ShaderRef, TextureDimension, TextureFormat},
-    },
+    render::render_resource::{AsBindGroup, ShaderRef},
     window::PresentMode,
 };
 use std::f32::consts::PI;
+use util::{uv_debug_texture, FPSPlugin};
 
 fn main() {
     App::new()
@@ -32,18 +29,17 @@ fn main() {
                     ..Default::default()
                 }),
         )
-        .add_plugins(ParticleMaterialPlugin::<
-            ExtendedMaterial<StandardParticle, SpinMat>,
+        .add_plugins(ProjectileMaterialPlugin::<
+            ExtendedProjectileMat<StandardProjectile, SpinMat>,
         >::default())
         .add_plugins(|a: &mut App| {
             a.world_mut()
                 .resource_mut::<Assets<Shader>>()
                 .insert(&SPIN_SHADER, Shader::from_wgsl(SPIN_VERTEX, "spin.wgsl"))
         })
-        .add_plugins(FrameTimeDiagnosticsPlugin)
-        .add_plugins(ParticlePlugin)
+        .add_plugins(FPSPlugin)
+        .add_plugins(ProjectilePlugin)
         .add_systems(Startup, setup)
-        .add_systems(Update, fps)
         .run();
 }
 
@@ -108,7 +104,11 @@ impl ParticleSystem for MySpawner {
     }
 }
 
-const SPIN_FN: &str = stringify!(
+const SPIN_VERTEX: &str = r#"
+    #import berdicle::{Vertex, VertexOutput};
+    #import bevy_pbr::mesh_functions::get_world_from_local;
+    #import bevy_pbr::view_transformations::position_world_to_clip;
+
     @vertex
     fn vertex(vertex: Vertex) -> VertexOutput {
         var out: VertexOutput;
@@ -131,22 +131,16 @@ const SPIN_FN: &str = stringify!(
         out.uv = vertex.uv;
         return out;
     }
-);
-
-pub static SPIN_VERTEX: &str = const_format::concatcp!(
-    "#import bevy_pbr::mesh_functions::get_world_from_local\n",
-    "#import bevy_pbr::view_transformations::position_world_to_clip,\n",
-    PARTICLE_VERTEX_IN,
-    PARTICLE_VERTEX_OUT,
-    SPIN_FN,
-);
+"#;
 
 pub static SPIN_SHADER: Handle<Shader> = Handle::weak_from_u128(123123412412412412);
 
 #[derive(Debug, Clone, Copy, TypePath, Asset, AsBindGroup)]
 struct SpinMat {}
 
-impl MaterialExtension for SpinMat {
+impl ProjectileMaterialExtension for SpinMat {
+    type InstanceBuffer = ExtractedProjectile;
+
     fn vertex_shader() -> ShaderRef {
         ShaderRef::Handle(SPIN_SHADER.clone())
     }
@@ -157,17 +151,38 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut materials2: ResMut<Assets<StandardParticle>>,
-    mut materials3: ResMut<Assets<ExtendedMaterial<StandardParticle, SpinMat>>>,
+    mut materials2: ResMut<Assets<StandardProjectile>>,
+    mut materials3: ResMut<Assets<ExtendedProjectileMat<StandardProjectile, SpinMat>>>,
 ) {
-    commands.spawn(TextBundle {
-        text: Text::from_section("FPS: 60.00", Default::default()),
-        ..Default::default()
-    });
     let e = commands
-        .spawn(ParticleSystemBundle {
-            particle_system: ParticleInstance::new(MySpawner(0.)),
-            mesh: meshes.add(
+        .spawn((
+            ProjectileCluster::new(MySpawner(0.)),
+            Mesh3d(
+                meshes.add(
+                    Mesh::from(
+                        Cone {
+                            radius: 0.5,
+                            height: 0.5,
+                        }
+                        .mesh(),
+                    )
+                    .translated_by(Vec3::new(0., 0.25, 0.))
+                    .rotated_by(Quat::from_rotation_x(-PI / 2.0)),
+                ),
+            ),
+            ProjectileMat(materials2.add(StandardProjectile {
+                base_color: LinearRgba::new(2., 2., 2., 1.),
+                texture: images.add(uv_debug_texture()),
+                alpha_mode: AlphaMode::Opaque,
+                ..Default::default()
+            })),
+        ))
+        .id();
+
+    commands.spawn((
+        ProjectileRef(e),
+        Mesh3d(
+            meshes.add(
                 Mesh::from(
                     Cone {
                         radius: 0.5,
@@ -176,117 +191,56 @@ fn setup(
                     .mesh(),
                 )
                 .translated_by(Vec3::new(0., 0.25, 0.))
-                .rotated_by(Quat::from_rotation_x(-PI / 2.0)),
+                .rotated_by(Quat::from_rotation_x(PI / 2.0)),
             ),
-            material: materials2.add(StandardParticle {
-                base_color: LinearRgba::new(2., 2., 2., 1.),
-                texture: images.add(uv_debug_texture()),
-                alpha_mode: AlphaMode::Opaque,
-            }),
-            ..Default::default()
-        })
-        .id();
-
-    commands.spawn(ParticleRefBundle {
-        particles: ParticleRef(e),
-        mesh: meshes.add(
-            Mesh::from(
-                Cone {
-                    radius: 0.5,
-                    height: 0.5,
-                }
-                .mesh(),
-            )
-            .translated_by(Vec3::new(0., 0.25, 0.))
-            .rotated_by(Quat::from_rotation_x(PI / 2.0)),
         ),
-        material: materials2.add(StandardParticle {
+        ProjectileMat(materials2.add(StandardProjectile {
             base_color: LinearRgba::new(2., 2., 2., 1.),
             texture: images.add(uv_debug_texture()),
             alpha_mode: AlphaMode::Opaque,
-        }),
-        ..Default::default()
-    });
+            ..Default::default()
+        })),
+    ));
 
-    commands.spawn(ParticleRefBundle {
-        particles: ParticleRef(e),
-        mesh: meshes.add({
+    commands.spawn((
+        ProjectileRef(e),
+        Mesh3d(meshes.add({
             let mut mesh =
                 Mesh::from(Sphere::new(0.1).mesh()).translated_by(Vec3::new(0.8, 0., 0.));
             mesh.merge(&Mesh::from(Sphere::new(0.1).mesh()).translated_by(Vec3::new(-0.8, 0., 0.)));
             mesh
-        }),
-        material: materials3.add(ExtendedMaterial {
-            base: StandardParticle {
+        })),
+        ProjectileMat(materials3.add(ExtendedProjectileMat {
+            base: StandardProjectile {
                 base_color: LinearRgba::new(2., 2., 0., 1.),
                 texture: images.add(uv_debug_texture()),
                 alpha_mode: AlphaMode::Opaque,
+                ..Default::default()
             },
             extension: SpinMat {},
-        }),
-        ..Default::default()
-    });
+        })),
+    ));
 
-    commands.spawn(PointLightBundle {
-        point_light: PointLight {
+    commands.spawn((
+        PointLight {
             shadows_enabled: true,
             intensity: 10_000_000.,
             range: 100.0,
             shadow_depth_bias: 0.2,
             ..default()
         },
-        transform: Transform::from_xyz(8.0, 16.0, 8.0),
-        ..default()
-    });
+        Transform::from_xyz(8.0, 16.0, 8.0),
+    ));
 
     // ground plane
-    commands.spawn(PbrBundle {
-        mesh: meshes.add(Plane3d::default().mesh().size(50.0, 50.0).subdivisions(10)),
-        material: materials.add(StandardMaterial::from_color(Srgba::GREEN)),
-        transform: Transform::from_xyz(0., 0., 0.),
-        ..default()
-    });
+    commands.spawn((
+        Mesh3d(meshes.add(Plane3d::default().mesh().size(50.0, 50.0).subdivisions(10))),
+        MeshMaterial3d(materials.add(StandardMaterial::from_color(Srgba::GREEN))),
+        Transform::from_xyz(0., 0., 0.),
+    ));
 
-    commands.spawn(Camera3dBundle {
-        transform: Transform::from_xyz(0.0, 7., 30.0).looking_at(Vec3::new(0., 0., 0.), Vec3::Y),
-        ..default()
-    });
-}
-
-/// Creates a colorful test pattern
-fn uv_debug_texture() -> Image {
-    const TEXTURE_SIZE: usize = 8;
-
-    let mut palette: [u8; 32] = [
-        255, 102, 159, 255, 255, 159, 102, 255, 236, 255, 102, 255, 121, 255, 102, 255, 102, 255,
-        198, 255, 102, 198, 255, 255, 121, 102, 255, 255, 236, 102, 255, 255,
-    ];
-
-    let mut texture_data = [0; TEXTURE_SIZE * TEXTURE_SIZE * 4];
-    for y in 0..TEXTURE_SIZE {
-        let offset = TEXTURE_SIZE * y * 4;
-        texture_data[offset..(offset + TEXTURE_SIZE * 4)].copy_from_slice(&palette);
-        palette.rotate_right(4);
-    }
-
-    Image::new_fill(
-        Extent3d {
-            width: TEXTURE_SIZE as u32,
-            height: TEXTURE_SIZE as u32,
-            depth_or_array_layers: 1,
-        },
-        TextureDimension::D2,
-        &texture_data,
-        TextureFormat::Rgba8UnormSrgb,
-        RenderAssetUsages::RENDER_WORLD,
-    )
-}
-
-fn fps(diagnostics: Res<DiagnosticsStore>, mut query: Query<&mut Text>) {
-    if let Some(value) = diagnostics
-        .get(&FrameTimeDiagnosticsPlugin::FPS)
-        .and_then(|fps| fps.smoothed())
-    {
-        query.single_mut().sections[0].value = format!("FPS: {:.2}", value)
-    }
+    commands.spawn((
+        Camera3d::default(),
+        Transform::from_xyz(0.0, 7., 30.0).looking_at(Vec3::new(0., 0., 0.), Vec3::Y),
+    ));
 }

@@ -6,12 +6,19 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use bevy::{math::Vec4, prelude::Component};
+use bevy::{
+    math::Vec4,
+    prelude::Component,
+    render::{
+        mesh::VertexBufferLayout,
+        render_resource::{VertexAttribute, VertexFormat, VertexStepMode},
+    },
+};
 use bytemuck::{Pod, Zeroable};
 
 use crate::{
     trail::{TrailBuffer, TrailedParticle},
-    Particle,
+    Particle, ProjectileInstanceBuffer,
 };
 
 fn validate<T>() {
@@ -54,7 +61,7 @@ impl Default for Align16MaybeUninit {
 /// Instance buffer of a particle.
 #[derive(Debug, Clone, Copy, Zeroable, Pod)]
 #[repr(C)]
-pub struct ExtractedParticle {
+pub struct ExtractedProjectile {
     pub index: u32,
     pub lifetime: f32,
     pub fac: f32,
@@ -65,8 +72,59 @@ pub struct ExtractedParticle {
     pub color: Vec4,
 }
 
-#[derive(Debug, Clone, Component)]
-pub(crate) struct ExtractedParticleBuffer(pub(crate) Arc<Vec<ExtractedParticle>>);
+impl ProjectileInstanceBuffer for ExtractedProjectile {
+    fn descriptor() -> VertexBufferLayout {
+        VertexBufferLayout {
+            array_stride: size_of::<ExtractedProjectile>() as u64,
+            step_mode: VertexStepMode::Instance,
+            attributes: vec![
+                VertexAttribute {
+                    format: VertexFormat::Uint32,
+                    offset: 0,
+                    shader_location: 3,
+                },
+                VertexAttribute {
+                    format: VertexFormat::Float32,
+                    offset: 4,
+                    shader_location: 4,
+                },
+                VertexAttribute {
+                    format: VertexFormat::Float32,
+                    offset: 8,
+                    shader_location: 5,
+                },
+                VertexAttribute {
+                    format: VertexFormat::Float32,
+                    offset: 12,
+                    shader_location: 6,
+                },
+                VertexAttribute {
+                    format: VertexFormat::Float32x4,
+                    offset: 16,
+                    shader_location: 7,
+                },
+                VertexAttribute {
+                    format: VertexFormat::Float32x4,
+                    offset: 32,
+                    shader_location: 8,
+                },
+                VertexAttribute {
+                    format: VertexFormat::Float32x4,
+                    offset: 48,
+                    shader_location: 9,
+                },
+                VertexAttribute {
+                    format: VertexFormat::Float32x4,
+                    offset: 64,
+                    shader_location: 10,
+                },
+            ],
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ExtractedParticleBuffer(pub(crate) Arc<Vec<ExtractedProjectile>>);
 
 impl ExtractedParticleBuffer {
     pub fn is_empty(&self) -> bool {
@@ -107,7 +165,7 @@ pub struct ParticleBuffer {
     /// Ring: number of particles initialized, never goes down.
     pub(crate) ring_capacity: usize,
     /// Allocation of extracted particles on the render world.
-    pub(crate) extracted_allocation: Mutex<Arc<Vec<ExtractedParticle>>>,
+    pub(crate) extracted_allocation: Mutex<Arc<Vec<ExtractedProjectile>>>,
     /// Type of this should be `Vec<Trail>`.
     pub(crate) detached_trails: Option<Box<dyn Any + Send + Sync>>,
 }
@@ -267,7 +325,6 @@ impl ParticleBuffer {
             .and_then(|x| x.downcast_ref::<Vec<T>>())
             .map(|x| x.as_ref())
     }
-
 
     /// Returns a reference to detached curves.
     pub fn detached_mut<T: TrailBuffer>(&mut self) -> Option<&mut [T]> {

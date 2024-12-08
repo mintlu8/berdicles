@@ -1,6 +1,9 @@
 //! Utility for implementing particles.
 
-use std::f32::consts::PI;
+use std::{
+    f32::consts::PI,
+    ops::{AddAssign, Mul},
+};
 
 use bevy::{
     math::{Quat, Vec2, Vec3},
@@ -64,10 +67,21 @@ pub fn random_quat(seed: f32) -> Quat {
     let u1 = rng.f32();
     let u2 = rng.f32();
     let u3 = rng.f32();
-    Quat {
-        x: (1. - u1).sqrt() * (2. * PI * u2).sin(),
-        y: (1. - u1).sqrt() * (2. * PI * u2).cos(),
-        z: (u1).sqrt() * (2. * PI * u3).sin(),
-        w: (u1).sqrt() * (2. * PI * u3).cos(),
-    }
+    Quat::from_array([
+        (1. - u1).sqrt() * (2. * PI * u2).sin(),
+        (1. - u1).sqrt() * (2. * PI * u2).cos(),
+        (u1).sqrt() * (2. * PI * u3).sin(),
+        (u1).sqrt() * (2. * PI * u3).cos(),
+    ])
+}
+
+/// Apply acceleration to a physics based projectile.
+pub fn acceleration<T: AddAssign<T> + Mul<f32, Output = T> + Copy>(
+    acceleration: T,
+    speed: &mut T,
+    position: &mut T,
+    dt: f32,
+) {
+    *speed += acceleration * dt;
+    *position += *speed * dt;
 }

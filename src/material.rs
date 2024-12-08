@@ -1,38 +1,91 @@
 use bevy::{
     asset::{Asset, Handle},
     color::LinearRgba,
-    pbr::Material,
-    prelude::{Bundle, Deref, DerefMut, Entity},
+    ecs::system::SystemParamItem,
+    image::Image,
+    prelude::Component,
     reflect::TypePath,
     render::{
         alpha::AlphaMode,
-        mesh::Mesh,
-        render_resource::{AsBindGroup, ShaderRef},
-        texture::Image,
-        view::VisibilityBundle,
+        mesh::VertexBufferLayout,
+        render_resource::{
+            AsBindGroup, AsBindGroupError, BindGroupLayout, BindGroupLayoutEntry, Face, ShaderRef,
+            UnpreparedBindGroup,
+        },
+        renderer::RenderDevice,
     },
-    transform::components::{GlobalTransform, Transform},
 };
+use bytemuck::Pod;
 
 use crate::{
-    shader::{PARTICLE_DBG_FRAGMENT, PARTICLE_FRAGMENT, PARTICLE_VERTEX},
-    sub::{ParticleEventBuffer, ParticleParent},
-    trail::TrailMeshOf,
-    ParticleBuffer, ParticleInstance, ParticleRef,
+    shader::{PARTICLE_FRAGMENT, PARTICLE_VERTEX},
+    ExtractedProjectile,
 };
 
-/// [`Material`] that displays an unlit combination of `base_color` and `texture` on a mesh.
-#[derive(Debug, Clone, Default, PartialEq, TypePath, Asset, AsBindGroup)]
-pub struct StandardParticle<const BACKFACE_CULLING: bool = true> {
-    #[uniform(0)]
-    pub base_color: LinearRgba,
-    #[texture(1)]
-    #[sampler(2)]
-    pub texture: Handle<Image>,
-    pub alpha_mode: AlphaMode,
+pub trait ProjectileInstanceBuffer: Pod {
+    fn descriptor() -> VertexBufferLayout;
 }
 
-impl<const CULL: bool> Material for StandardParticle<CULL> {
+pub trait ProjectileMaterial: Asset + AsBindGroup + Clone {
+    type InstanceBuffer: ProjectileInstanceBuffer;
+
+    fn vertex_shader() -> ShaderRef {
+        ShaderRef::Default
+    }
+
+    fn fragment_shader() -> ShaderRef {
+        ShaderRef::Default
+    }
+
+    fn alpha_mode(&self) -> AlphaMode {
+        AlphaMode::Opaque
+    }
+
+    fn cull_mode(&self) -> Option<Face> {
+        None
+    }
+}
+
+pub trait ProjectileMaterialExtension: Asset + AsBindGroup + Clone {
+    type InstanceBuffer: ProjectileInstanceBuffer;
+
+    fn vertex_shader() -> ShaderRef {
+        ShaderRef::Default
+    }
+
+    fn fragment_shader() -> ShaderRef {
+        ShaderRef::Default
+    }
+
+    fn alpha_mode(&self) -> Option<AlphaMode> {
+        None
+    }
+
+    fn cull_mode(&self) -> Option<Option<Face>> {
+        None
+    }
+}
+
+#[derive(Debug, Component)]
+pub struct ProjectileMat<T: ProjectileMaterial>(pub Handle<T>);
+
+/// [`ProjectileMaterial`] that displays an unlit combination of `base_color` and `texture` on a mesh.
+#[derive(Debug, Clone, Default, PartialEq, TypePath, Asset, AsBindGroup)]
+pub struct StandardProjectile {
+    #[uniform(0)]
+    pub billboard: i32,
+    #[uniform(1)]
+    pub base_color: LinearRgba,
+    #[texture(2)]
+    #[sampler(3)]
+    pub texture: Handle<Image>,
+    pub alpha_mode: AlphaMode,
+    pub cull_mode: Option<Face>,
+}
+
+impl ProjectileMaterial for StandardProjectile {
+    type InstanceBuffer = ExtractedProjectile;
+
     fn vertex_shader() -> ShaderRef {
         ShaderRef::Handle(PARTICLE_VERTEX.clone())
     }
@@ -44,154 +97,86 @@ impl<const CULL: bool> Material for StandardParticle<CULL> {
     fn alpha_mode(&self) -> AlphaMode {
         self.alpha_mode
     }
+
+    fn cull_mode(&self) -> Option<Face> {
+        self.cull_mode
+    }
 }
 
-/// [`Material`] that displays useful debug info of a particle.
-#[derive(Debug, Clone, Default, PartialEq, TypePath, Asset, AsBindGroup)]
-pub struct DebugParticle {}
+#[derive(Debug, Clone, Default, TypePath, Asset)]
+pub struct ExtendedProjectileMat<
+    B: ProjectileMaterial,
+    E: ProjectileMaterialExtension<InstanceBuffer = B::InstanceBuffer>,
+> {
+    pub base: B,
+    pub extension: E,
+}
 
-impl Material for DebugParticle {
+impl<B: ProjectileMaterial, E: ProjectileMaterialExtension<InstanceBuffer = B::InstanceBuffer>>
+    ProjectileMaterial for ExtendedProjectileMat<B, E>
+{
+    type InstanceBuffer = B::InstanceBuffer;
+
     fn vertex_shader() -> ShaderRef {
-        ShaderRef::Handle(PARTICLE_VERTEX.clone())
+        match E::vertex_shader() {
+            ShaderRef::Default => B::vertex_shader(),
+            shader => shader,
+        }
     }
+
     fn fragment_shader() -> ShaderRef {
-        ShaderRef::Handle(PARTICLE_DBG_FRAGMENT.clone())
-    }
-}
-
-/// A Bundle of a particle system.
-#[derive(Debug, Bundle)]
-pub struct ParticleSystemBundle<M: Material> {
-    /// A type erased [`ParticleSystem`](crate::ParticleSystem).
-    pub particle_system: ParticleInstance,
-    /// Does not need to be created by the user.
-    pub particle_buffer: ParticleBuffer,
-    /// Mesh shape of the particle.
-    pub mesh: Handle<Mesh>,
-    /// Material of the particle.
-    pub material: Handle<M>,
-    pub transform: Transform,
-    pub global_transform: GlobalTransform,
-    pub visibility: VisibilityBundle,
-}
-
-impl<M: Material> Default for ParticleSystemBundle<M> {
-    fn default() -> Self {
-        Self {
-            particle_system: Default::default(),
-            particle_buffer: Default::default(),
-            mesh: Default::default(),
-            material: Default::default(),
-            transform: Default::default(),
-            global_transform: Default::default(),
-            visibility: Default::default(),
-        }
-    }
-}
-
-#[doc(hidden)]
-#[derive(Debug, Bundle, Deref, DerefMut)]
-pub struct ParentedParticleSystemBundle<M: Material> {
-    #[deref]
-    bundle: ParticleSystemBundle<M>,
-    pub parent: ParticleParent,
-}
-
-#[doc(hidden)]
-#[derive(Debug, Bundle, Deref, DerefMut)]
-pub struct EventParticleSystemBundle<M: Material> {
-    #[deref]
-    bundle: ParticleSystemBundle<M>,
-    pub events: ParticleEventBuffer,
-}
-
-#[doc(hidden)]
-#[derive(Debug, Bundle, Deref, DerefMut)]
-pub struct ParentedEventParticleSystemBundle<M: Material> {
-    #[deref]
-    bundle: ParticleSystemBundle<M>,
-    pub parent: ParticleParent,
-    pub events: ParticleEventBuffer,
-}
-
-impl<M: Material> ParticleSystemBundle<M> {
-    /// Add a parent to the particle system.
-    pub fn parented(self, entity: Entity) -> ParentedParticleSystemBundle<M> {
-        ParentedParticleSystemBundle {
-            bundle: self,
-            parent: ParticleParent(entity),
+        match E::fragment_shader() {
+            ShaderRef::Default => B::fragment_shader(),
+            shader => shader,
         }
     }
 
-    /// Add an [`ParticleEventBuffer`] to the current particle system.
-    pub fn with_events(self) -> EventParticleSystemBundle<M> {
-        EventParticleSystemBundle {
-            bundle: self,
-            events: ParticleEventBuffer::default(),
-        }
+    fn alpha_mode(&self) -> AlphaMode {
+        self.extension
+            .alpha_mode()
+            .unwrap_or(self.base.alpha_mode())
+    }
+
+    fn cull_mode(&self) -> Option<Face> {
+        self.extension.cull_mode().unwrap_or(self.base.cull_mode())
     }
 }
 
-impl<M: Material> ParentedParticleSystemBundle<M> {
-    /// Add an [`ParticleEventBuffer`] to the current particle system.
-    pub fn with_events(self) -> ParentedEventParticleSystemBundle<M> {
-        ParentedEventParticleSystemBundle {
-            bundle: self.bundle,
-            parent: self.parent,
-            events: ParticleEventBuffer::default(),
-        }
+impl<B: ProjectileMaterial, E: ProjectileMaterialExtension<InstanceBuffer = B::InstanceBuffer>>
+    AsBindGroup for ExtendedProjectileMat<B, E>
+{
+    type Data = (<B as AsBindGroup>::Data, <E as AsBindGroup>::Data);
+    type Param = (<B as AsBindGroup>::Param, <E as AsBindGroup>::Param);
+
+    fn unprepared_bind_group(
+        &self,
+        layout: &BindGroupLayout,
+        render_device: &RenderDevice,
+        (base_param, extended_param): &mut SystemParamItem<'_, '_, Self::Param>,
+    ) -> Result<UnpreparedBindGroup<Self::Data>, AsBindGroupError> {
+        // add together the bindings of the base material and the user material
+        let UnpreparedBindGroup {
+            mut bindings,
+            data: base_data,
+        } = B::unprepared_bind_group(&self.base, layout, render_device, base_param)?;
+        let extended_bindgroup =
+            E::unprepared_bind_group(&self.extension, layout, render_device, extended_param)?;
+
+        bindings.extend(extended_bindgroup.bindings);
+
+        Ok(UnpreparedBindGroup {
+            bindings,
+            data: (base_data, extended_bindgroup.data),
+        })
     }
-}
 
-impl<M: Material> EventParticleSystemBundle<M> {
-    /// Add a parent to the particle system.
-    pub fn parented(self, entity: Entity) -> ParentedEventParticleSystemBundle<M> {
-        ParentedEventParticleSystemBundle {
-            bundle: self.bundle,
-            events: self.events,
-            parent: ParticleParent(entity),
-        }
+    fn bind_group_layout_entries(render_device: &RenderDevice) -> Vec<BindGroupLayoutEntry>
+    where
+        Self: Sized,
+    {
+        // add together the bindings of the standard material and the user material
+        let mut entries = B::bind_group_layout_entries(render_device);
+        entries.extend(E::bind_group_layout_entries(render_device));
+        entries
     }
-}
-
-/// A [`Material`] and [`Mesh`] that renders based on
-/// another [`ParticleInstance`]'s output.
-#[derive(Debug, Bundle)]
-pub struct ParticleRefBundle<M: Material> {
-    /// A reference to a [`ParticleInstance`].
-    pub particles: ParticleRef,
-    /// Mesh shape of the particle.
-    pub mesh: Handle<Mesh>,
-    /// Material of the particle.
-    pub material: Handle<M>,
-    pub transform: Transform,
-    pub global_transform: GlobalTransform,
-    pub visibility: VisibilityBundle,
-}
-
-impl<M: Material> Default for ParticleRefBundle<M> {
-    fn default() -> Self {
-        Self {
-            particles: Default::default(),
-            mesh: Default::default(),
-            material: Default::default(),
-            transform: Default::default(),
-            global_transform: Default::default(),
-            visibility: Default::default(),
-        }
-    }
-}
-
-/// A Bundle of a particle trails.
-#[derive(Debug, Bundle, Default)]
-pub struct ParticleTrailsBundle<M: Material> {
-    /// A reference to a [`ParticleSystem`](crate::ParticleSystem).
-    pub of: TrailMeshOf,
-    /// Mesh shape of the trails, can be left as `default`.
-    pub mesh: Handle<Mesh>,
-    /// Material of the trails.
-    pub material: Handle<M>,
-    pub transform: Transform,
-    pub global_transform: GlobalTransform,
-    pub visibility: VisibilityBundle,
 }
