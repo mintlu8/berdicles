@@ -129,7 +129,7 @@ impl Debug for dyn ErasedSubParticleSystem {
 
 /// A [`ProjectileSystem`] that spawns particles on parent's emitted events.
 ///
-/// You must add [`ParticleEventBuffer`] to the parent for this to function.
+/// You must add [`ProjectileEventBuffer`] to the parent for this to function.
 pub trait EventProjectileSystem: ProjectileSystem {
     /// Returns how many to spawn in a burst on an event.
     fn spawn_on_event(&mut self, parent: &ProjectileEvent) -> usize;

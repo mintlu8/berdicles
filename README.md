@@ -1,39 +1,37 @@
 # berdicles
 
-Expressive CPU particle system for the bevy engine.
+Instancing and projectile system for bevy.
+
+## Use cases
+
+Despite the name, `berdicles` can do pretty much anything related to instancing,
+for example render the same material with different colors.
+The crate can create VFX such as particle systems, spawn hair or grass, manage projectile events, etc.
 
 ## Feature Set
 
-* Instancing based CPU particles.
-* Expressive non-physics based particle traits.
-* Familiar setup with bevy's native `Material` and `Mesh`.
-* Particles as emitters.
-* Mesh based particle trails.
-* Particle events that spawn other particles.
-* Multiple renders from the same simulation result via `ParticleRef`.
-* Billboard particles.
+* Instancing based particles.
+* Fully support bevy's mesh and material system.
+* Custom shaders and instance buffers.
+* Emit projectiles from parent projectiles.
+* Mesh based projectile trails.
+* Projectile events that spawn other particles, i.e. explosion.
+* Multiple renders from the same simulation result via `ProjectileRef`.
+* Billboard rendering.
 
 Non-features
 
 * GPU simulation.
-* SIMD and similar optimizations.
-* First party physics support.
-* Clean up "completed" particle systems.
+* SIMD.
 
 ## Getting Started
 
-Add a `ParticleSystemBundle`, which is a `MaterialMeshBundle` with a `ParticleInstance`.
+Add a `ProjectileCluster`, `Mesh3d` and `InstancedMaterial3d` to an entity.
 
-* Huh?
+To create a `ProjectileCluster` we need a `ProjectileSystem` trait implementor and
+a `Projectile` type that it can spawns.
 
-First we need to add `ParticleMaterialPlugin`, not `MaterialPlugin`, which sets up a different render pipeline.
-
-We only use `vertex_shader()`, `fragment_shader()` and `alpha_mode()` from Material so the rest can be ignored.
-
-This uses the mesh as the particle shape and the shader for instancing. The `StandardParticle` is already setup
-in this crate, but you can define your own `Material` by referencing this shader's source code.
-
-To create a `ParticleInstance` we need a `ParticleSystem` trait implementor and a `Particle` that it spawns.
+See the examples folder for more information.
 
 ## Trait Based Particles
 
@@ -62,36 +60,20 @@ impl Particle for SpiralParticle {
 }
 ```
 
-## Sub-particle Systems
+## Comparison with `bevy_hanabi`
 
-`SubParticleSystem` uses a parent particle system's particles as spawners for other particles.
-
-* Add `ParticleParent(Entity)` to point to a parent
-* Add the downcast function `as_sub_particle_system` to your `ParticleSystem` implementation.
-
-Yes you can chain these infinitely.
-
-## Event Particle Systems
-
-`EventParticleSystem` can listen to events like particle despawning or colliding and spawn particles on events.
-
-* Add `ParticleParent(Entity)` to point to a parent
-* Add `ParticleEventBuffer` to the parent to record these events,
-* Add the downcast function `as_event_particle_system` to your `ParticleSystem` implementation.
-
-## Trail Rendering
-
-We can render trails behind particles as mesh.
-
-* Implement `TrailedParticle` on your particle.
-* Add `on_update`, `detach_slice` and `as_trail_particle_system` to your `ParticleSystem` implementation.
-* Add `TrailMeshOf(Entity)` to a `MaterialMeshBundle` to render them.
+`berdicle` is more of a projectile system since we have more control
+over the simulation and the render pipeline.
+Events can be easily extracted from `berdicles` due to this fact. However,
+for most VFX with no gameplay function, 
+`bevy_hanabi` should be the superior choice.
 
 ## Versions
 
-| bevy | berdicles   |
-|------|-------------|
-| 0.14 | latest      |
+| bevy | berdicles    |
+|------|--------------|
+| 0.14 | 0.1-0.2      |
+| 0.15 | 0.3-latest   |
 
 ## License
 

@@ -4,7 +4,7 @@
 use std::{
     any::Any,
     fmt::Debug,
-    ops::{Deref, DerefMut, Range},
+    ops::{Deref, DerefMut},
 };
 
 use bevy::{
@@ -336,22 +336,17 @@ pub trait ProjectileSystem {
     fn build_particle(&self, seed: f32) -> Self::Projectile;
 
     /// Additional actions to perform during update.
-    ///
-    /// if rendering trails using `Retain`, we should call [`ParticleBuffer::update_detached`] here.
     fn on_update(&mut self, dt: f32, buffer: &mut ProjectileBuffer) {}
-
-    /// If rendering trails using `Retain`, call [`ParticleBuffer::detach_slice`].
-    fn detach_slice(&mut self, detached: Range<usize>, buffer: &mut ProjectileBuffer) {}
 
     /// Perform a meta action on the ParticleSystem.
     ///
-    /// Since [`ParticleInstance`] is type erased, this is the standard way to modify
-    /// a [`ParticleSystem`] at runtime.
+    /// Since [`ProjectileCluster`] is type erased, this is the standard way to modify
+    /// a [`ProjectileSystem`] at runtime.
     ///
     /// # Example
     ///
     /// Change the spawner's transform matrix when `GlobalTransform` is changed.
-    /// (functionalities for [`update_position`](ParticleSystem::update_position))
+    /// (functionalities for [`update_position`](ProjectileSystem::update_position))
     ///
     /// ```
     /// # /*
@@ -378,18 +373,18 @@ pub trait ProjectileSystem {
     #[allow(unused_variables)]
     fn update_position(&mut self, transform: &GlobalTransform) {}
 
-    /// Downcast into a [`SubParticleSystem`].
+    /// Downcast into a [`SubProjectileSystem`].
     fn as_sub_particle_system(&mut self) -> Option<&mut dyn ErasedSubParticleSystem> {
         None
     }
 
-    /// Downcast into a [`EventParticleSystem`].
+    /// Downcast into a [`EventProjectileSystem`].
     fn as_event_particle_system(&mut self) -> Option<&mut dyn ErasedEventParticleSystem> {
         None
     }
 }
 
-/// Type erased version of [`ParticleSystem`].
+/// Type erased version of [`ProjectileSystem`].
 pub trait ErasedParticleSystem: Send + Sync {
     /// Obtain debug information.
     ///
@@ -399,7 +394,7 @@ pub trait ErasedParticleSystem: Send + Sync {
     fn as_any(&self) -> &dyn Any;
     /// Convert to a mutable [`Any`].
     fn as_any_mut(&mut self) -> &mut dyn Any;
-    /// Returns [`ParticleSystem::WORLD_SPACE`].
+    /// Returns [`ProjectileSystem::WORLD_SPACE`].
     fn is_world_space(&self) -> bool;
     /// Advance by time.
     fn update(&mut self, dt: f32, buffer: &mut ProjectileBuffer);
@@ -410,7 +405,7 @@ pub trait ErasedParticleSystem: Send + Sync {
         buffer: &mut ProjectileBuffer,
         events: &mut ProjectileEventBuffer,
     );
-    /// Create an empty [`ParticleBuffer`].
+    /// Create an empty [`ProjectileBuffer`].
     fn spawn_particle_buffer(&self) -> ProjectileBuffer;
     /// Update the global position of the spawner.
     #[allow(unused_variables)]
@@ -421,9 +416,9 @@ pub trait ErasedParticleSystem: Send + Sync {
     fn apply_meta(&mut self, command: &dyn Any, buffer: &mut ProjectileBuffer);
     /// Extract into a instance buffer.
     fn extract(&self, buffer: &ProjectileBuffer, vec: &mut ErasedExtractBuffer);
-    /// Downcast into a [`SubParticleSystem`];
+    /// Downcast into a [`SubProjectileSystem`];
     fn as_sub_particle_system(&mut self) -> Option<&mut dyn ErasedSubParticleSystem>;
-    /// Downcast into a [`EventParticleSystem`];
+    /// Downcast into a [`EventProjectileSystem`];
     fn as_event_particle_system(&mut self) -> Option<&mut dyn ErasedEventParticleSystem>;
     /// Checks if all particles and trails are despawned.
     ///
@@ -431,7 +426,7 @@ pub trait ErasedParticleSystem: Send + Sync {
     fn should_despawn(&self, buffer: &ProjectileBuffer) -> bool;
 }
 
-/// Component form of a type erased [`ParticleSystem`].
+/// Component form of a type erased [`ProjectileSystem`].
 #[derive(Debug, Component)]
 #[require(ProjectileBuffer, Transform, Visibility)]
 pub struct ProjectileCluster(Box<dyn ErasedParticleSystem>);
@@ -447,14 +442,14 @@ impl ProjectileCluster {
         Self(Box::new(particles))
     }
 
-    /// Try obtain a [`ParticleSystem`] by downcasting.
+    /// Try obtain a [`ProjectileSystem`] by downcasting.
     pub fn downcast_ref<P: ProjectileSystem + Send + Sync + 'static>(&self) -> Option<&P> {
         self.0.as_any().downcast_ref()
     }
 
-    /// Try obtain a mutable [`ParticleSystem`] by downcasting.
+    /// Try obtain a mutable [`ProjectileSystem`] by downcasting.
     ///
-    /// Alternatively use [`ParticleSystem::apply_meta`].
+    /// Alternatively use [`ProjectileSystem::apply_meta`].
     pub fn downcast_mut<P: ProjectileSystem + Send + Sync + 'static>(&mut self) -> Option<&mut P> {
         self.0.as_any_mut().downcast_mut()
     }
@@ -511,7 +506,6 @@ where
                 }
                 if len != original_len {
                     sort_unstable(buf, |x| x.should_despawn());
-                    self.detach_slice(len..original_len, buffer)
                 }
                 buffer.len = len;
                 buffer.extend((0..self.spawn_step(dt)).map(|_| spawn_particle(self)))
@@ -547,7 +541,6 @@ where
                 }
                 if len != original_len {
                     sort_unstable(buf, |x| x.is_expired());
-                    self.detach_slice(len..original_len, buffer)
                 }
                 buffer.len = len;
                 buffer.extend((0..self.spawn_step(dt)).map(|_| spawn_particle(self)))

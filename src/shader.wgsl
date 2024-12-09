@@ -18,7 +18,7 @@
 struct Vertex {
     @builtin(instance_index) instance_index: u32,
     @location(0) position: vec3<f32>,
-#ifdef VERTEX_NORMAL
+#ifdef VERTEX_NORMALS
     @location(1) normal: vec3<f32>,
 #endif
     @location(2) uv: vec2<f32>,
@@ -52,7 +52,7 @@ struct VertexOutput {
     @location(3) seed: f32,
     @location(4) color: vec4<f32>,
     @location(5) uv: vec2<f32>,
-#ifdef VERTEX_NORMAL
+#ifdef VERTEX_NORMALS
     @location(6) normal: vec3<f32>,
 #endif
 #ifdef VERTEX_COLORS
@@ -75,7 +75,7 @@ fn vertex(vertex: Vertex) -> VertexOutput {
         dot(vec4(position, 1.0), local_to_world_z),
     );
     out.clip_position = position_world_to_clip(world_position);
-#ifdef VERTEX_NORMAL
+#ifdef VERTEX_NORMALS
     // This only works if scale is uniform, otherwise an approximation.
     // todo: fix this
     let normal = vec3(
@@ -99,7 +99,7 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     );
     let position = position_world_to_view(world_position);
     out.clip_position = position_view_to_clip(position + vertex.position);
-#ifdef VERTEX_NORMAL
+#ifdef VERTEX_NORMALS
     // The intension is 2d object, so don't change the normal
     out.normal = vertex.normal;
 #endif

@@ -1,6 +1,4 @@
-use std::ops::{Add, Mul, Sub};
-
-use bevy::math::Vec3;
+use bevy::math::{StableInterpolate, Vec3};
 
 #[derive(Debug, Clone, Copy)]
 pub enum WidthCurve {
@@ -11,9 +9,13 @@ pub enum WidthCurve {
 /// A trail template that have points follow each other in a smooth manner.
 #[derive(Debug, Clone, Copy)]
 pub struct ExpDecayTrail<const N: usize> {
+    /// Points and widths of the trail.
     pub buffer: [(Vec3, f32); N],
+    /// Exponential decay factor, usually in `10..50`
     pub position_decay: f32,
+    /// Width relative to position or length.
     pub width_curve: WidthCurve,
+    /// The length of which the curve should be despawned.
     pub eps: f32,
 }
 
@@ -37,19 +39,6 @@ impl<const N: usize> Default for ExpDecayTrail<N> {
             eps: 0.001,
         }
     }
-}
-
-pub(crate) trait ExpDecay:
-    Mul<f32, Output = Self> + Add<Self, Output = Self> + Sub<Self, Output = Self> + Sized + Copy
-{
-    fn exp_decay(&mut self, b: Self, decay: f32, dt: f32) {
-        *self = b + (*self - b) * f32::exp(-decay * dt)
-    }
-}
-
-impl<T> ExpDecay for T where
-    T: Mul<f32, Output = Self> + Add<Self, Output = Self> + Sub<Self, Output = Self> + Sized + Copy
-{
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -81,17 +70,16 @@ impl<const N: usize> ExpDecayTrail<N> {
                 }
             }
         }
-        //item.width.exp_decay(self.min_width, 1., dt);
         for i in 0..N - 1 {
             let last = self.buffer[i].0;
             self.buffer[i + 1]
                 .0
-                .exp_decay(last, self.position_decay, dt);
+                .smooth_nudge(&last, self.position_decay, dt);
         }
     }
 
     pub fn is_expired(&self) -> bool {
-        if N == 0 {
+        if N <= 1 {
             true
         } else {
             self.buffer[0].0.distance(self.buffer[N - 1].0) < self.eps

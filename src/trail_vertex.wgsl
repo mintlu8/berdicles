@@ -1,5 +1,3 @@
-#define_import_path berdicle
-
 #import bevy_pbr::{
     mesh_bindings::mesh,
     mesh_functions,
@@ -28,12 +26,17 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     out.world_position = mesh_functions::mesh_position_local_to_world(world_from_local, vec4<f32>(vertex.position, 1.0));
 
     out.world_normal = normalize(out.world_position.xyz - view.world_position);
+#ifdef VERTEX_UVS_B
     out.world_position += vec4(cross(tangent, out.world_normal), 0.0) * vertex.uv_b.x; 
+#endif
     
     out.position = position_world_to_clip(out.world_position.xyz);
 
     out.uv = vertex.uv;
+#ifdef VERTEX_UVS_B
     out.uv_b = vertex.uv;
+#endif
+
 
 #ifdef VERTEX_TANGENTS
     out.world_tangent = mesh_functions::mesh_tangent_local_to_world(

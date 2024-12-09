@@ -159,7 +159,7 @@ impl From<Entity> for ProjectileRef {
     }
 }
 
-/// A [`ParticleSystem`] that spawns once and maintains a GPU side instance buffer [`OneShotParticleBuffer`], i.e. grass.
+/// A [`ProjectileSystem`] that spawns once and maintains a GPU side instance buffer, i.e. grass.
 pub struct HairParticles(Vec<DefaultInstanceBuffer>);
 
 impl HairParticles {
