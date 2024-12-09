@@ -18,6 +18,7 @@ use bevy_image::Image;
 use bytemuck::Pod;
 
 use crate::{
+    pipeline::InstancedPipelineKey,
     shader::{PARTICLE_FRAGMENT, PARTICLE_VERTEX},
     DefaultInstanceBuffer,
 };
@@ -44,6 +45,24 @@ pub trait InstancedMaterial: Asset + AsBindGroup + Clone {
     fn cull_mode(&self) -> Option<Face> {
         None
     }
+
+    fn billboard(&self) -> bool {
+        false
+    }
+
+    fn pipeline_key(&self) -> InstancedPipelineKey {
+        let cull_key = match self.cull_mode() {
+            Some(Face::Front) => InstancedPipelineKey::CULL_FRONT,
+            Some(Face::Back) => InstancedPipelineKey::CULL_BACK,
+            None => InstancedPipelineKey::empty(),
+        };
+        let billboard_key = if self.billboard() {
+            InstancedPipelineKey::BILLBOARD
+        } else {
+            InstancedPipelineKey::empty()
+        };
+        cull_key | billboard_key
+    }
 }
 
 pub trait InstancedMaterialExtension: Asset + AsBindGroup + Clone {
@@ -64,6 +83,24 @@ pub trait InstancedMaterialExtension: Asset + AsBindGroup + Clone {
     fn cull_mode(&self) -> Option<Option<Face>> {
         None
     }
+
+    fn billboard(&self) -> bool {
+        false
+    }
+
+    fn pipeline_key(&self) -> InstancedPipelineKey {
+        let cull_key = match self.cull_mode() {
+            Some(Some(Face::Front)) => InstancedPipelineKey::CULL_FRONT,
+            Some(Some(Face::Back)) => InstancedPipelineKey::CULL_BACK,
+            _ => InstancedPipelineKey::empty(),
+        };
+        let billboard_key = if self.billboard() {
+            InstancedPipelineKey::BILLBOARD
+        } else {
+            InstancedPipelineKey::empty()
+        };
+        cull_key | billboard_key
+    }
 }
 
 /// Component form of [`InstancedMaterial`], provides a material for [`ProjectileCluster`](crate::ProjectileCluster).
@@ -74,14 +111,15 @@ pub struct InstancedMaterial3d<T: InstancedMaterial>(pub Handle<T>);
 #[derive(Debug, Clone, Default, PartialEq, TypePath, Asset, AsBindGroup)]
 pub struct StandardParticle {
     #[uniform(0)]
-    pub billboard: i32,
-    #[uniform(1)]
     pub base_color: LinearRgba,
-    #[texture(2)]
-    #[sampler(3)]
+    #[texture(1)]
+    #[sampler(2)]
     pub texture: Handle<Image>,
     pub alpha_mode: AlphaMode,
     pub cull_mode: Option<Face>,
+    // todo: screen/pixel space billboard?
+    /// If true, render the object at the center of the projectile facing the camera **orthographically** and **to scale**.
+    pub billboard: bool,
 }
 
 impl InstancedMaterial for StandardParticle {
@@ -101,6 +139,10 @@ impl InstancedMaterial for StandardParticle {
 
     fn cull_mode(&self) -> Option<Face> {
         self.cull_mode
+    }
+
+    fn billboard(&self) -> bool {
+        self.billboard
     }
 }
 
@@ -141,6 +183,14 @@ impl<B: InstancedMaterial, E: InstancedMaterialExtension<InstanceBuffer = B::Ins
 
     fn cull_mode(&self) -> Option<Face> {
         self.extension.cull_mode().unwrap_or(self.base.cull_mode())
+    }
+
+    fn billboard(&self) -> bool {
+        self.extension.billboard() | self.base.billboard()
+    }
+
+    fn pipeline_key(&self) -> InstancedPipelineKey {
+        self.extension.pipeline_key() | self.base.pipeline_key()
     }
 }
 

@@ -1,13 +1,11 @@
 use bevy::{color::Srgba, transform::components::Transform};
 
-use crate::{DefaultInstanceBuffer, ParticleSystem, Projectile};
+use crate::{Projectile, ProjectileSystem};
 
 #[derive(Debug, Clone, Copy)]
 pub struct NoopParticleSystem;
 
 impl Projectile for NoopParticleSystem {
-    type Extracted = DefaultInstanceBuffer;
-
     fn get_seed(&self) -> f32 {
         0.
     }
@@ -31,7 +29,7 @@ impl Projectile for NoopParticleSystem {
     }
 }
 
-impl ParticleSystem for NoopParticleSystem {
+impl ProjectileSystem for NoopParticleSystem {
     type Projectile = NoopParticleSystem;
 
     fn as_debug(&self) -> &dyn std::fmt::Debug {

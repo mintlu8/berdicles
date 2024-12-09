@@ -1,8 +1,6 @@
 use std::ops::{Add, Mul, Sub};
 
-use bevy::{math::Vec3, prelude::Mesh};
-
-use crate::trail::{TrailBuffer, TrailMeshBuilder};
+use bevy::math::Vec3;
 
 #[derive(Debug, Clone, Copy)]
 pub enum WidthCurve {
@@ -60,8 +58,8 @@ pub struct ExpDecayTrailItem {
     pub width: f32,
 }
 
-impl<const N: usize> TrailBuffer for ExpDecayTrail<N> {
-    fn update(&mut self, dt: f32) {
+impl<const N: usize> ExpDecayTrail<N> {
+    pub fn update(&mut self, dt: f32) {
         if N <= 1 {
             return;
         }
@@ -92,18 +90,11 @@ impl<const N: usize> TrailBuffer for ExpDecayTrail<N> {
         }
     }
 
-    fn is_expired(&self) -> bool {
+    pub fn is_expired(&self) -> bool {
         if N == 0 {
             true
         } else {
             self.buffer[0].0.distance(self.buffer[N - 1].0) < self.eps
         }
-    }
-
-    fn build_trail(&self, mesh: &mut Mesh) {
-        if N <= 1 {
-            return;
-        }
-        TrailMeshBuilder::new(mesh).build_plane(self.buffer.iter().map(|x| (x.0, x.1)), 0.0..1.0)
     }
 }

@@ -15,98 +15,18 @@ use bevy::{
     },
 };
 
-use crate::{
-    shader::TRAIL_VERTEX, ParticleBuffer, ParticleBufferStrategy, ParticleSystem, Projectile,
-    ProjectileCluster,
-};
+use crate::{shader::TRAIL_VERTEX, ProjectileBuffer, ProjectileCluster};
 
+/// Standard material of trails.
 pub type TrailMaterial = ExtendedMaterial<StandardMaterial, TrailVertex>;
 
+/// Standard material of trails.
 #[derive(Debug, Clone, Default, AsBindGroup, TypePath, Asset)]
 pub struct TrailVertex {}
 
 impl MaterialExtension for TrailVertex {
     fn vertex_shader() -> ShaderRef {
         ShaderRef::Handle(TRAIL_VERTEX.clone())
-    }
-}
-
-/// A buffer of vertices on a curve.
-///
-/// Typically implemented as a [`RingBuffer`](crate::RingBuffer) of a particle like type.
-pub trait TrailBuffer: Copy + Send + Sync + 'static {
-    /// Advance by time.
-    fn update(&mut self, dt: f32);
-    /// Returns true if expired, must be ordered by lifetime with items within the same trail.
-    fn is_expired(&self) -> bool;
-    /// Build mesh, you may find [`TrailMeshBuilder`] useful in implementing this.
-    #[allow(unused_variables)]
-    fn build_trail(&self, mesh: &mut Mesh);
-
-    /// By default we only generate position, uv, normal and indices.
-    fn default_mesh() -> Mesh {
-        Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::all())
-            .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, Vec::<Vec3>::new())
-            .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, Vec::<Vec3>::new())
-            .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, Vec::<Vec2>::new())
-            .with_inserted_indices(Indices::U32(Vec::new()))
-    }
-}
-
-/// [`Particle`] that contains a [`TrailBuffer`] and can be rendered as a mesh.
-///
-/// You might find [`RingBuffer`](crate::RingBuffer) useful in implementing [`TrailBuffer`].
-pub trait TrailedParticle: Projectile {
-    /// Usually a fixed sized ring buffer of points that constructs a mesh.
-    type TrailBuffer: TrailBuffer;
-
-    /// Convert to [`TrailBuffer`].
-    fn as_trail_buffer(&self) -> Self::TrailBuffer;
-    /// Convert to a mutable [`TrailBuffer`].
-    fn as_trail_buffer_mut(&mut self) -> &mut Self::TrailBuffer;
-}
-
-/// ParticleSystem with [`Particle`] as a [`TrailedParticle`].
-pub trait TrailParticleSystem {
-    /// Generate a default [`Mesh`].
-    fn default_mesh(&self) -> Mesh;
-    /// Build a trail [`Mesh`].
-    fn build_trail(&self, buffer: &ParticleBuffer, mesh: &mut Mesh);
-    /// Returns true if all trails are despawned.
-    fn should_despawn(&self, buffer: &ParticleBuffer) -> bool;
-}
-
-impl<T> TrailParticleSystem for T
-where
-    T: ParticleSystem<Projectile: TrailedParticle>,
-{
-    fn default_mesh(&self) -> Mesh {
-        <T::Projectile as TrailedParticle>::TrailBuffer::default_mesh()
-    }
-
-    fn build_trail(&self, buffer: &ParticleBuffer, mesh: &mut Mesh) {
-        for particle in buffer.get::<T::Projectile>() {
-            particle.as_trail_buffer().build_trail(mesh);
-        }
-        if let Some(detached) = buffer.detached::<<T::Projectile as TrailedParticle>::TrailBuffer>()
-        {
-            for trail in detached {
-                trail.build_trail(mesh);
-            }
-        }
-    }
-
-    fn should_despawn(&self, buffer: &ParticleBuffer) -> bool {
-        match T::STRATEGY {
-            ParticleBufferStrategy::Retain => buffer
-                .detached::<<T::Projectile as TrailedParticle>::TrailBuffer>()
-                .map(|x| x.is_empty())
-                .unwrap_or(true),
-            ParticleBufferStrategy::RingBuffer => buffer
-                .get::<T::Projectile>()
-                .iter()
-                .all(|x| x.as_trail_buffer().is_expired()),
-        }
     }
 }
 
@@ -167,7 +87,7 @@ impl From<Entity> for TrailMeshOf {
 /// System for rendering trails.
 pub fn trail_rendering(
     mut meshes: ResMut<Assets<Mesh>>,
-    mut particles: Query<(&ProjectileCluster, &mut ParticleBuffer)>,
+    mut particles: Query<(&ProjectileCluster, &mut ProjectileBuffer)>,
     mut trails: Query<(&TrailMeshOf, &mut Mesh3d)>,
 ) {
     for (trail, mut handle) in trails.iter_mut() {

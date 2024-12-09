@@ -2,10 +2,10 @@
 
 use berdicles::{
     templates::{ExpDecayTrail, WidthCurve},
-    trail::{TrailBuffer, TrailMaterial, TrailMeshOf, TrailedParticle},
+    trail::{TrailMaterial, TrailMeshOf},
     util::transform_from_derivative,
-    DefaultInstanceBuffer, ExpirationState, InstancedMaterial3d, ParticleSystem, Projectile,
-    ProjectileCluster, ProjectilePlugin, StandardParticle,
+    ExpirationState, InstancedMaterial3d, Projectile, ProjectileCluster, ProjectilePlugin,
+    ProjectileSystem, StandardParticle,
 };
 use bevy::{
     pbr::{NotShadowCaster, NotShadowReceiver},
@@ -49,8 +49,6 @@ pub struct MainParticle {
 }
 
 impl Projectile for MainParticle {
-    type Extracted = DefaultInstanceBuffer;
-
     fn get_seed(&self) -> f32 {
         self.seed
     }
@@ -106,7 +104,7 @@ impl Projectile for MainParticle {
 
 pub struct MainSpawner(f32);
 
-impl ParticleSystem for MainSpawner {
+impl ProjectileSystem for MainSpawner {
     type Projectile = MainParticle;
     //const STRATEGY: ParticleBufferStrategy = ParticleBufferStrategy::RingBuffer;
 
@@ -131,18 +129,6 @@ impl ParticleSystem for MainSpawner {
                 ..Default::default()
             },
         }
-    }
-}
-
-impl TrailedParticle for MainParticle {
-    type TrailBuffer = ExpDecayTrail<16>;
-
-    fn as_trail_buffer(&self) -> Self::TrailBuffer {
-        self.trail
-    }
-
-    fn as_trail_buffer_mut(&mut self) -> &mut Self::TrailBuffer {
-        &mut self.trail
     }
 }
 

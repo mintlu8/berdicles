@@ -1,7 +1,6 @@
 use std::{
-    any::{type_name, Any, TypeId},
+    any::{type_name, TypeId},
     mem::{align_of, size_of, MaybeUninit},
-    ops::Range,
     slice,
     sync::{Arc, Mutex},
 };
@@ -17,10 +16,7 @@ use bevy::{
 };
 use bytemuck::{Pod, Zeroable};
 
-use crate::{
-    trail::{TrailBuffer, TrailedParticle},
-    Projectile, ProjectileInstanceBuffer,
-};
+use crate::{Projectile, ProjectileInstanceBuffer};
 
 fn validate<T>() {
     if !matches!(align_of::<T>(), 1 | 2 | 4 | 8 | 16) {
@@ -174,7 +170,7 @@ pub enum ParticleBufferType {
 
 /// Type erased buffer for particles.
 #[derive(Debug, Component, Default)]
-pub struct ParticleBuffer {
+pub struct ProjectileBuffer {
     /// Type of particle, for safety checks.
     pub(crate) particle_type: ParticleBufferType,
     /// Allocated buffer.
@@ -189,11 +185,9 @@ pub struct ParticleBuffer {
     pub(crate) ring_capacity: usize,
     /// Allocation of extracted particles on the render world.
     pub(crate) extracted_allocation: Mutex<Arc<ErasedExtractBuffer>>,
-    /// Type of this should be `Vec<Trail>`.
-    pub(crate) detached_trails: Option<Box<dyn Any + Send + Sync>>,
 }
 
-impl ParticleBuffer {
+impl ProjectileBuffer {
     /// Return `true` if buffer is uninitialized, usually created by `default()`.
     pub const fn is_uninit(&self) -> bool {
         matches!(self.particle_type, ParticleBufferType::Uninit)
@@ -217,7 +211,6 @@ impl ParticleBuffer {
             ptr: 0,
             ring_capacity: 0,
             extracted_allocation: Default::default(),
-            detached_trails: None,
         }
     }
 
@@ -234,7 +227,6 @@ impl ParticleBuffer {
             ptr: 0,
             ring_capacity: 0,
             extracted_allocation: Default::default(),
-            detached_trails: None,
         }
     }
 
@@ -338,68 +330,6 @@ impl ParticleBuffer {
                     self.ptr = (self.ptr + 1) % slice.len();
                 }
             }
-        }
-    }
-
-    /// Returns a reference to detached curves.
-    pub fn detached<T: TrailBuffer>(&self) -> Option<&[T]> {
-        self.detached_trails
-            .as_ref()
-            .and_then(|x| x.downcast_ref::<Vec<T>>())
-            .map(|x| x.as_ref())
-    }
-
-    /// Returns a reference to detached curves.
-    pub fn detached_mut<T: TrailBuffer>(&mut self) -> Option<&mut [T]> {
-        self.detached_trails
-            .as_mut()
-            .and_then(|x| x.downcast_mut::<Vec<T>>())
-            .map(|x| x.as_mut())
-    }
-
-    /// Detach a slice of particles into trail rendering.
-    pub fn detach_slice<T: TrailedParticle>(&mut self, slice: Range<usize>) {
-        let buf = match self.particle_type {
-            ParticleBufferType::Uninit => panic!("Type ID mismatch!"),
-            ParticleBufferType::Retain(id) => {
-                if id != TypeId::of::<T>() {
-                    panic!("Type ID mismatch!")
-                }
-                unsafe { slice::from_raw_parts(self.buffer.as_ptr() as *const T, self.len) }
-            }
-            ParticleBufferType::RingBuffer(id) => {
-                if id != TypeId::of::<T>() {
-                    panic!("Type ID mismatch!")
-                }
-                unsafe {
-                    slice::from_raw_parts(self.buffer.as_ptr() as *const T, self.ring_capacity)
-                }
-            }
-        };
-        if let Some(trails) = self
-            .detached_trails
-            .as_mut()
-            .and_then(|x| x.downcast_mut::<Vec<T::TrailBuffer>>())
-        {
-            trails.extend(buf[slice].iter().map(|x| x.as_trail_buffer()));
-        } else {
-            self.detached_trails = Some(Box::new(Vec::from_iter(
-                buf[slice].iter().map(|x| x.as_trail_buffer()),
-            )))
-        }
-    }
-
-    /// Update detached trails, this must be added manually to `on_update` of a `ParticleSystem` if needed.
-    pub fn update_detached<T: TrailedParticle>(&mut self, dt: f32) {
-        if let Some(trails) = self
-            .detached_trails
-            .as_mut()
-            .and_then(|x| x.downcast_mut::<Vec<T::TrailBuffer>>())
-        {
-            trails.retain_mut(|x| {
-                x.update(dt);
-                !x.is_expired()
-            })
         }
     }
 }

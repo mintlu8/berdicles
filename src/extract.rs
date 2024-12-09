@@ -22,13 +22,14 @@ use bevy::{
 };
 
 use crate::{
-    pipeline::InstanceBuffer, DefaultInstanceBuffer, ExtractedParticleBuffer, InstancedMaterial,
-    InstancedMaterial3d, ParticleBuffer, ParticleSystem, Projectile, ProjectileCluster,
+    pipeline::{InstanceBuffer, InstancedPipelineKey},
+    DefaultInstanceBuffer, ExtractedParticleBuffer, InstancedMaterial, InstancedMaterial3d,
+    Projectile, ProjectileBuffer, ProjectileCluster, ProjectileSystem,
 };
 
 #[derive(Resource)]
 pub struct ExtractedProjectileMeta<M: InstancedMaterial> {
-    pub(crate) alpha_modes: HashMap<AssetId<M>, AlphaMode>,
+    pub(crate) mode: HashMap<AssetId<M>, (AlphaMode, InstancedPipelineKey)>,
     pub(crate) entity_material: HashMap<MainEntity, AssetId<M>>,
 }
 
@@ -60,13 +61,13 @@ impl<M: InstancedMaterial> ExtractedProjectileMeta<M> {
     pub fn get_alpha(&self, entity: &MainEntity) -> Option<AlphaMode> {
         self.entity_material
             .get(entity)
-            .and_then(|x| self.alpha_modes.get(x))
-            .copied()
+            .and_then(|x| self.mode.get(x))
+            .map(|x| x.0)
     }
 }
 
 pub(crate) fn extract_buffers(
-    buffers: Extract<Query<(Entity, &ProjectileCluster, &ParticleBuffer)>>,
+    buffers: Extract<Query<(Entity, &ProjectileCluster, &ProjectileBuffer)>>,
     references: Extract<Query<(Entity, &ProjectileRef)>>,
     one_shot: Extract<Query<(Entity, &CompiledHairBuffer)>>,
     transforms: Extract<Query<(Entity, &GlobalTransform)>>,
@@ -120,9 +121,9 @@ pub(crate) fn extract_meta<M: InstancedMaterial>(
     mut commands: Commands,
 ) {
     commands.insert_resource(ExtractedProjectileMeta {
-        alpha_modes: materials
+        mode: materials
             .iter()
-            .map(|(id, mat)| (id, mat.alpha_mode()))
+            .map(|(id, mat)| (id, (mat.alpha_mode(), mat.pipeline_key())))
             .collect(),
         entity_material: query
             .iter()
@@ -162,7 +163,7 @@ impl From<Entity> for ProjectileRef {
 pub struct HairParticles(Vec<DefaultInstanceBuffer>);
 
 impl HairParticles {
-    pub fn new<P: ParticleSystem>(mut particles: P) -> Self {
+    pub fn new<P: ProjectileSystem>(mut particles: P) -> Self {
         let count = particles.spawn_step(0.);
         let mut buf = Vec::with_capacity(count);
         for _ in 0..count {

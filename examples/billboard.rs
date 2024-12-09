@@ -2,8 +2,8 @@
 
 use berdicles::{
     util::{random_cone, random_quat},
-    DefaultInstanceBuffer, ExpirationState, InstancedMaterial3d, ParticleSystem, Projectile,
-    ProjectileCluster, ProjectilePlugin, StandardParticle,
+    ExpirationState, InstancedMaterial3d, Projectile, ProjectileCluster, ProjectilePlugin,
+    ProjectileSystem, StandardParticle,
 };
 use bevy::{prelude::*, window::PresentMode};
 use util::{uv_debug_texture, FPSPlugin};
@@ -35,8 +35,6 @@ pub struct MyParticle {
 }
 
 impl Projectile for MyParticle {
-    type Extracted = DefaultInstanceBuffer;
-
     fn get_seed(&self) -> f32 {
         self.seed
     }
@@ -75,7 +73,7 @@ impl Projectile for MyParticle {
 
 pub struct MySpawner(f32);
 
-impl ParticleSystem for MySpawner {
+impl ProjectileSystem for MySpawner {
     type Projectile = MyParticle;
 
     fn capacity(&self) -> usize {
@@ -120,7 +118,7 @@ fn setup(
             base_color: LinearRgba::new(2., 0., 0., 1.),
             texture: images.add(uv_debug_texture()),
             alpha_mode: AlphaMode::Opaque,
-            billboard: 1,
+            billboard: true,
             ..Default::default()
         })),
         Transform::from_xyz(-4., 0., 0.),

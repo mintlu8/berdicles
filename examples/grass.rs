@@ -11,7 +11,7 @@ use std::f32::consts::PI;
 use berdicles::{
     util::into_rng, DefaultInstanceBuffer, ExpirationState, ExtendedInstancedMaterial,
     HairParticles, InstancedMaterial3d, InstancedMaterialExtension, InstancedMaterialPlugin,
-    ParticleSystem, Projectile, ProjectilePlugin, StandardParticle,
+    Projectile, ProjectilePlugin, ProjectileSystem, StandardParticle,
 };
 use bevy::{
     prelude::*,
@@ -108,8 +108,6 @@ pub struct MyParticle {
 }
 
 impl Projectile for MyParticle {
-    type Extracted = DefaultInstanceBuffer;
-
     fn get_seed(&self) -> f32 {
         self.seed
     }
@@ -137,7 +135,7 @@ impl Projectile for MyParticle {
 
 pub struct MySpawner;
 
-impl ParticleSystem for MySpawner {
+impl ProjectileSystem for MySpawner {
     type Projectile = MyParticle;
 
     /// Doesn't matter.

@@ -5,7 +5,9 @@ use bevy::{
 use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 
-use crate::{ErasedParticleSystem, ExpirationState, ParticleBuffer, ParticleSystem, Projectile};
+use crate::{
+    ErasedParticleSystem, ExpirationState, Projectile, ProjectileBuffer, ProjectileSystem,
+};
 
 /// Event on individual particle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,7 +29,7 @@ impl From<ExpirationState> for ParticleEventType {
 
 /// Event and data on an individual particle.
 #[derive(Debug, Clone, Copy)]
-pub struct ParticleEvent {
+pub struct ProjectileEvent {
     pub event: ParticleEventType,
     pub seed: f32,
     pub index: u32,
@@ -53,27 +55,27 @@ impl From<Entity> for ProjectileParent {
 }
 
 /// A buffer of particle events. If added to a particle bundle, will record particle events happened
-/// in this frame. Also enables [`EventParticleSystem`].
+/// in this frame. Also enables [`EventProjectileSystem`].
 #[derive(Debug, Component, Default)]
-pub struct ParticleEventBuffer(Vec<ParticleEvent>);
+pub struct ProjectileEventBuffer(Vec<ProjectileEvent>);
 
-impl Deref for ParticleEventBuffer {
-    type Target = Vec<ParticleEvent>;
+impl Deref for ProjectileEventBuffer {
+    type Target = Vec<ProjectileEvent>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl DerefMut for ParticleEventBuffer {
+impl DerefMut for ProjectileEventBuffer {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
-/// A [`ParticleSystem`] that spawns particles from a parent
-/// `ParticleSystem`'s alive particles.
-pub trait SubParticleSystem: ParticleSystem {
+/// A [`ProjectileSystem`] that spawns projectiles from a parent
+/// `ProjectileSystem`'s alive particles.
+pub trait SubProjectileSystem: ProjectileSystem {
     type Parent: Projectile;
 
     /// Determines how many particles to spawn in a frame **per particle**.
@@ -82,28 +84,28 @@ pub trait SubParticleSystem: ParticleSystem {
     fn spawn_step_sub(&mut self, parent: &mut Self::Parent, dt: f32) -> usize;
 
     /// Convert a random seed into a particle with parent information.
-    fn into_sub_particle(parent: &Self::Parent, seed: f32) -> Self::Projectile;
+    fn build_sub_projectile(parent: &Self::Parent, seed: f32) -> Self::Projectile;
 }
 
-/// An erased [`SubParticleSystem`].
+/// An erased [`SubProjectileSystem`].
 pub trait ErasedSubParticleSystem: ErasedParticleSystem {
     fn spawn_from_parent(
         &mut self,
         dt: f32,
-        buffer: &mut ParticleBuffer,
-        parent: &mut ParticleBuffer,
+        buffer: &mut ProjectileBuffer,
+        parent: &mut ProjectileBuffer,
     );
 }
 
 impl<T> ErasedSubParticleSystem for T
 where
-    T: SubParticleSystem + ErasedParticleSystem,
+    T: SubProjectileSystem + ErasedParticleSystem,
 {
     fn spawn_from_parent(
         &mut self,
         dt: f32,
-        buffer: &mut ParticleBuffer,
-        parent: &mut ParticleBuffer,
+        buffer: &mut ProjectileBuffer,
+        parent: &mut ProjectileBuffer,
     ) {
         for parent in parent.get_mut::<T::Parent>() {
             if parent.is_expired() {
@@ -113,7 +115,7 @@ where
             buffer.extend(
                 (0..num)
                     .map(|_| self.rng())
-                    .map(|seed| Self::into_sub_particle(parent, seed)),
+                    .map(|seed| Self::build_sub_projectile(parent, seed)),
             )
         }
     }
@@ -125,34 +127,34 @@ impl Debug for dyn ErasedSubParticleSystem {
     }
 }
 
-/// A [`ParticleSystem`] that spawns particles on parent's emitted events.
+/// A [`ProjectileSystem`] that spawns particles on parent's emitted events.
 ///
 /// You must add [`ParticleEventBuffer`] to the parent for this to function.
-pub trait EventParticleSystem: ParticleSystem {
+pub trait EventProjectileSystem: ProjectileSystem {
     /// Returns how many to spawn in a burst on an event.
-    fn spawn_on_event(&mut self, parent: &ParticleEvent) -> usize;
+    fn spawn_on_event(&mut self, parent: &ProjectileEvent) -> usize;
 
     /// Convert a random seed into a particle with parent information.
-    fn into_sub_particle(parent: &ParticleEvent, seed: f32) -> Self::Projectile;
+    fn build_sub_projectile(parent: &ProjectileEvent, seed: f32) -> Self::Projectile;
 }
 
-/// Type erased [`EventParticleSystem`].
+/// Type erased [`EventProjectileSystem`].
 pub trait ErasedEventParticleSystem: ErasedParticleSystem {
     /// Spawn particles on event.
-    fn spawn_on_event(&mut self, buffer: &mut ParticleBuffer, parent: &ParticleEventBuffer);
+    fn spawn_on_event(&mut self, buffer: &mut ProjectileBuffer, parent: &ProjectileEventBuffer);
 }
 
 impl<T> ErasedEventParticleSystem for T
 where
-    T: EventParticleSystem + ErasedParticleSystem,
+    T: EventProjectileSystem + ErasedParticleSystem,
 {
-    fn spawn_on_event(&mut self, buffer: &mut ParticleBuffer, parent: &ParticleEventBuffer) {
+    fn spawn_on_event(&mut self, buffer: &mut ProjectileBuffer, parent: &ProjectileEventBuffer) {
         for event in parent.iter() {
             let num = self.spawn_on_event(event);
             buffer.extend(
                 (0..num)
                     .map(|_| self.rng())
-                    .map(|seed| Self::into_sub_particle(event, seed)),
+                    .map(|seed| Self::build_sub_projectile(event, seed)),
             )
         }
     }

@@ -11,10 +11,9 @@
 @group(1) @binding(1) var<uniform> local_to_world_y: vec4<f32>;
 @group(1) @binding(2) var<uniform> local_to_world_z: vec4<f32>;
 
-@group(2) @binding(0) var<uniform> billboard: i32;
-@group(2) @binding(1) var<uniform> color: vec4<f32>;
-@group(2) @binding(2) var texture: texture_2d<f32>;
-@group(2) @binding(3) var texture_sampler: sampler;
+@group(2) @binding(0) var<uniform> color: vec4<f32>;
+@group(2) @binding(1) var texture: texture_2d<f32>;
+@group(2) @binding(2) var texture_sampler: sampler;
 
 struct Vertex {
     @builtin(instance_index) instance_index: u32,
@@ -64,47 +63,47 @@ struct VertexOutput {
 @vertex
 fn vertex(vertex: Vertex) -> VertexOutput {
     var out: VertexOutput;
-    if billboard == 0 {
-        let position = vec3(
-            dot(vec4(vertex.position, 1.0), vertex.transform_x),
-            dot(vec4(vertex.position, 1.0), vertex.transform_y),
-            dot(vec4(vertex.position, 1.0), vertex.transform_z),
-        );
-        let world_position = vec3(
-            dot(vec4(position, 1.0), local_to_world_x),
-            dot(vec4(position, 1.0), local_to_world_y),
-            dot(vec4(position, 1.0), local_to_world_z),
-        );
-        out.clip_position = position_world_to_clip(world_position);
+#ifndef BILLBOARD
+    let position = vec3(
+        dot(vec4(vertex.position, 1.0), vertex.transform_x),
+        dot(vec4(vertex.position, 1.0), vertex.transform_y),
+        dot(vec4(vertex.position, 1.0), vertex.transform_z),
+    );
+    let world_position = vec3(
+        dot(vec4(position, 1.0), local_to_world_x),
+        dot(vec4(position, 1.0), local_to_world_y),
+        dot(vec4(position, 1.0), local_to_world_z),
+    );
+    out.clip_position = position_world_to_clip(world_position);
 #ifdef VERTEX_NORMAL
-        // This only works if scale is uniform, otherwise an approximation.
-        // todo: fix this
-        let normal = vec3(
-            dot(vec4(vertex.normal, 1.0), vertex.transform_x),
-            dot(vec4(vertex.normal, 1.0), vertex.transform_y),
-            dot(vec4(vertex.normal, 1.0), vertex.transform_z),
-        );
-        let world_normal = vec3(
-            dot(vec4(normal, 1.0), local_to_world_x),
-            dot(vec4(normal, 1.0), local_to_world_y),
-            dot(vec4(normal, 1.0), local_to_world_z),
-        );
-        out.normal = normalize(world_normal);
+    // This only works if scale is uniform, otherwise an approximation.
+    // todo: fix this
+    let normal = vec3(
+        dot(vec4(vertex.normal, 1.0), vertex.transform_x),
+        dot(vec4(vertex.normal, 1.0), vertex.transform_y),
+        dot(vec4(vertex.normal, 1.0), vertex.transform_z),
+    );
+    let world_normal = vec3(
+        dot(vec4(normal, 1.0), local_to_world_x),
+        dot(vec4(normal, 1.0), local_to_world_y),
+        dot(vec4(normal, 1.0), local_to_world_z),
+    );
+    out.normal = normalize(world_normal);
 #endif
-    } else {
-        let transform = vec3(vertex.transform_x.w, vertex.transform_y.w, vertex.transform_z.w);
-        let world_position = vec3(
-            dot(vec4(transform, 1.0), local_to_world_x),
-            dot(vec4(transform, 1.0), local_to_world_y),
-            dot(vec4(transform, 1.0), local_to_world_z),
-        );
-        let position = position_world_to_view(world_position);
-        out.clip_position = position_view_to_clip(position + vertex.position);
-        // The intension is 2d object, so don't change this
+#else
+    let transform = vec3(vertex.transform_x.w, vertex.transform_y.w, vertex.transform_z.w);
+    let world_position = vec3(
+        dot(vec4(transform, 1.0), local_to_world_x),
+        dot(vec4(transform, 1.0), local_to_world_y),
+        dot(vec4(transform, 1.0), local_to_world_z),
+    );
+    let position = position_world_to_view(world_position);
+    out.clip_position = position_view_to_clip(position + vertex.position);
 #ifdef VERTEX_NORMAL
-        out.normal = vertex.normal;
+    // The intension is 2d object, so don't change the normal
+    out.normal = vertex.normal;
 #endif
-    }
+#endif
     out.id = vertex.id;
     out.lifetime = vertex.lifetime;
     out.fac = vertex.fac;

@@ -18,6 +18,7 @@ use bevy::{
     time::{Time, Virtual},
     transform::components::{GlobalTransform, Transform},
 };
+use despawn::despawn_projectiles;
 use noop::NoopParticleSystem;
 
 mod extract;
@@ -36,9 +37,9 @@ pub mod trail;
 pub mod util;
 pub use buffer::*;
 use trail::{trail_rendering, TrailMaterial, TrailMeshBuilder};
+mod despawn;
 mod noop;
-// mod billboard;
-// pub use billboard::*;
+pub use despawn::DespawnProjectileCluster;
 pub mod templates;
 
 /// Plugin for `berdicle`.
@@ -75,6 +76,10 @@ impl Plugin for ProjectilePlugin {
         app.add_plugins(InstancedMaterialPlugin::<StandardParticle>::default());
         app.add_systems(Update, projectile_simulation_system);
         app.add_systems(Update, trail_rendering.after(projectile_simulation_system));
+        app.add_systems(
+            Update,
+            despawn_projectiles.after(projectile_simulation_system),
+        );
         app.sub_app_mut(RenderApp)
             .add_systems(ExtractSchedule, (extract_clean, extract_buffers).chain())
             .add_systems(
@@ -90,9 +95,9 @@ pub fn projectile_simulation_system(
     mut particles: Query<(
         Entity,
         &mut ProjectileCluster,
-        &mut ParticleBuffer,
+        &mut ProjectileBuffer,
         Ref<GlobalTransform>,
-        Option<&mut ParticleEventBuffer>,
+        Option<&mut ProjectileEventBuffer>,
         Option<&ProjectileParent>,
     )>,
 ) {
@@ -190,9 +195,11 @@ impl ExpirationState {
     }
 }
 
-/// A [`Particle`]. Must be [`Copy`] and have alignment less than `16`.
+/// A [`Projectile`]. Must be [`Copy`] and have alignment less than `16`.
 pub trait Projectile: Copy + 'static {
-    type Extracted: ProjectileInstanceBuffer + for<'t> From<&'t Self>;
+    // todo: add this back after associated type default
+    // /// Instance buffer, [`DefaultInstanceBuffer`] works for most cases.
+    // type Extracted: ProjectileInstanceBuffer + for<'t> From<&'t Self>;
 
     /// Obtain the seed used to generate the particle.
     fn get_seed(&self) -> f32 {
@@ -229,7 +236,7 @@ pub trait Projectile: Copy + 'static {
     fn update(&mut self, dt: f32);
 
     /// Update and write events to a buffer.
-    fn update_with_event_buffer(&mut self, dt: f32, buffer: &mut ParticleEventBuffer) {
+    fn update_with_event_buffer(&mut self, dt: f32, buffer: &mut ProjectileEventBuffer) {
         let is_expired = self.is_expired();
         self.update(dt);
         if is_expired {
@@ -237,7 +244,7 @@ pub trait Projectile: Copy + 'static {
         }
         let expr = self.expiration_state();
         if expr.is_expired() {
-            buffer.push(ParticleEvent {
+            buffer.push(ProjectileEvent {
                 event: expr.into(),
                 seed: self.get_seed(),
                 index: self.get_index(),
@@ -267,11 +274,16 @@ pub trait Projectile: Copy + 'static {
     fn trail(&self) -> &[(Vec3, f32)] {
         &[]
     }
+
+    /// Extract to an instance buffer, by default [`DefaultInstanceBuffer`].
+    fn extract(&self) -> impl ProjectileInstanceBuffer {
+        DefaultInstanceBuffer::from(self)
+    }
 }
 
 /// A particle spawner type.
 #[allow(unused_variables)]
-pub trait ParticleSystem {
+pub trait ProjectileSystem {
     /// If true, ignore [`Transform`] and [`GlobalTransform`].
     const WORLD_SPACE: bool = false;
 
@@ -326,10 +338,10 @@ pub trait ParticleSystem {
     /// Additional actions to perform during update.
     ///
     /// if rendering trails using `Retain`, we should call [`ParticleBuffer::update_detached`] here.
-    fn on_update(&mut self, dt: f32, buffer: &mut ParticleBuffer) {}
+    fn on_update(&mut self, dt: f32, buffer: &mut ProjectileBuffer) {}
 
     /// If rendering trails using `Retain`, call [`ParticleBuffer::detach_slice`].
-    fn detach_slice(&mut self, detached: Range<usize>, buffer: &mut ParticleBuffer) {}
+    fn detach_slice(&mut self, detached: Range<usize>, buffer: &mut ProjectileBuffer) {}
 
     /// Perform a meta action on the ParticleSystem.
     ///
@@ -359,7 +371,7 @@ pub trait ParticleSystem {
     /// # */
     /// ```
     #[allow(unused_variables)]
-    fn apply_meta(&mut self, command: &dyn Any, buffer: &mut ParticleBuffer) {}
+    fn apply_meta(&mut self, command: &dyn Any, buffer: &mut ProjectileBuffer) {}
 
     /// Optionally update the position of the spawner,
     /// by default only called if `WORLD_SPACE` and [`GlobalTransform`] is changed.
@@ -390,25 +402,25 @@ pub trait ErasedParticleSystem: Send + Sync {
     /// Returns [`ParticleSystem::WORLD_SPACE`].
     fn is_world_space(&self) -> bool;
     /// Advance by time.
-    fn update(&mut self, dt: f32, buffer: &mut ParticleBuffer);
+    fn update(&mut self, dt: f32, buffer: &mut ProjectileBuffer);
     /// Advance by time, write to an event buffer.
     fn update_with_event_buffer(
         &mut self,
         dt: f32,
-        buffer: &mut ParticleBuffer,
-        events: &mut ParticleEventBuffer,
+        buffer: &mut ProjectileBuffer,
+        events: &mut ProjectileEventBuffer,
     );
     /// Create an empty [`ParticleBuffer`].
-    fn spawn_particle_buffer(&self) -> ParticleBuffer;
+    fn spawn_particle_buffer(&self) -> ProjectileBuffer;
     /// Update the global position of the spawner.
     #[allow(unused_variables)]
     fn update_position(&mut self, transform: &GlobalTransform);
     /// Obtain a list of points and widths for trail rendering.
-    fn render_trail(&self, buffer: &ParticleBuffer, trail: &mut TrailMeshBuilder);
+    fn render_trail(&self, buffer: &ProjectileBuffer, trail: &mut TrailMeshBuilder);
     /// Perform a meta action on the ParticleSystem.
-    fn apply_meta(&mut self, command: &dyn Any, buffer: &mut ParticleBuffer);
+    fn apply_meta(&mut self, command: &dyn Any, buffer: &mut ProjectileBuffer);
     /// Extract into a instance buffer.
-    fn extract(&self, buffer: &ParticleBuffer, vec: &mut ErasedExtractBuffer);
+    fn extract(&self, buffer: &ProjectileBuffer, vec: &mut ErasedExtractBuffer);
     /// Downcast into a [`SubParticleSystem`];
     fn as_sub_particle_system(&mut self) -> Option<&mut dyn ErasedSubParticleSystem>;
     /// Downcast into a [`EventParticleSystem`];
@@ -416,12 +428,12 @@ pub trait ErasedParticleSystem: Send + Sync {
     /// Checks if all particles and trails are despawned.
     ///
     /// Be careful this is usually true on the first frame as well.
-    fn should_despawn(&mut self, buffer: &ParticleBuffer) -> bool;
+    fn should_despawn(&self, buffer: &ProjectileBuffer) -> bool;
 }
 
 /// Component form of a type erased [`ParticleSystem`].
 #[derive(Debug, Component)]
-#[require(ParticleBuffer, Transform, Visibility)]
+#[require(ProjectileBuffer, Transform, Visibility)]
 pub struct ProjectileCluster(Box<dyn ErasedParticleSystem>);
 
 impl Default for ProjectileCluster {
@@ -431,19 +443,19 @@ impl Default for ProjectileCluster {
 }
 
 impl ProjectileCluster {
-    pub fn new<P: ParticleSystem + Send + Sync + 'static>(particles: P) -> Self {
+    pub fn new<P: ProjectileSystem + Send + Sync + 'static>(particles: P) -> Self {
         Self(Box::new(particles))
     }
 
     /// Try obtain a [`ParticleSystem`] by downcasting.
-    pub fn downcast_ref<P: ParticleSystem + Send + Sync + 'static>(&self) -> Option<&P> {
+    pub fn downcast_ref<P: ProjectileSystem + Send + Sync + 'static>(&self) -> Option<&P> {
         self.0.as_any().downcast_ref()
     }
 
     /// Try obtain a mutable [`ParticleSystem`] by downcasting.
     ///
     /// Alternatively use [`ParticleSystem::apply_meta`].
-    pub fn downcast_mut<P: ParticleSystem + Send + Sync + 'static>(&mut self) -> Option<&mut P> {
+    pub fn downcast_mut<P: ProjectileSystem + Send + Sync + 'static>(&mut self) -> Option<&mut P> {
         self.0.as_any_mut().downcast_mut()
     }
 }
@@ -462,17 +474,17 @@ impl DerefMut for ProjectileCluster {
     }
 }
 
-fn spawn_particle<T: ParticleSystem>(particles: &mut T) -> T::Projectile {
+fn spawn_particle<T: ProjectileSystem>(particles: &mut T) -> T::Projectile {
     let seed = particles.rng();
     particles.build_particle(seed)
 }
 
 impl<T> ErasedParticleSystem for T
 where
-    T: ParticleSystem + Send + Sync + 'static,
+    T: ProjectileSystem + Send + Sync + 'static,
 {
     fn as_debug(&self) -> &dyn Debug {
-        ParticleSystem::as_debug(self)
+        ProjectileSystem::as_debug(self)
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -487,7 +499,7 @@ where
         T::WORLD_SPACE
     }
 
-    fn update(&mut self, dt: f32, buffer: &mut ParticleBuffer) {
+    fn update(&mut self, dt: f32, buffer: &mut ProjectileBuffer) {
         match Self::STRATEGY {
             ParticleBufferStrategy::Retain => {
                 let original_len = buffer.len;
@@ -521,8 +533,8 @@ where
     fn update_with_event_buffer(
         &mut self,
         dt: f32,
-        buffer: &mut ParticleBuffer,
-        events: &mut ParticleEventBuffer,
+        buffer: &mut ProjectileBuffer,
+        events: &mut ProjectileEventBuffer,
     ) {
         match Self::STRATEGY {
             ParticleBufferStrategy::Retain => {
@@ -554,29 +566,26 @@ where
         self.on_update(dt, buffer)
     }
 
-    fn spawn_particle_buffer(&self) -> ParticleBuffer {
+    fn spawn_particle_buffer(&self) -> ProjectileBuffer {
         match Self::STRATEGY {
             ParticleBufferStrategy::Retain => {
-                ParticleBuffer::new_retain::<T::Projectile>(self.capacity())
+                ProjectileBuffer::new_retain::<T::Projectile>(self.capacity())
             }
             ParticleBufferStrategy::RingBuffer => {
-                ParticleBuffer::new_ring::<T::Projectile>(self.capacity())
+                ProjectileBuffer::new_ring::<T::Projectile>(self.capacity())
             }
         }
     }
 
     fn update_position(&mut self, transform: &GlobalTransform) {
-        ParticleSystem::update_position(self, transform)
+        ProjectileSystem::update_position(self, transform)
     }
 
-    fn apply_meta(&mut self, command: &dyn Any, buffer: &mut ParticleBuffer) {
-        ParticleSystem::apply_meta(self, command, buffer)
+    fn apply_meta(&mut self, command: &dyn Any, buffer: &mut ProjectileBuffer) {
+        ProjectileSystem::apply_meta(self, command, buffer)
     }
 
-    fn extract(&self, buffer: &ParticleBuffer, extract: &mut ErasedExtractBuffer) {
-        extract
-            .bytes
-            .reserve(buffer.len * size_of::<<T::Projectile as Projectile>::Extracted>());
+    fn extract(&self, buffer: &ProjectileBuffer, extract: &mut ErasedExtractBuffer) {
         let mut count = 0;
         extract.bytes.clear();
         buffer
@@ -585,29 +594,27 @@ where
             .filter(|x| !x.is_expired())
             .for_each(|x| {
                 count += 1;
-                extract.bytes.extend(bytemuck::bytes_of(
-                    &<<T::Projectile as Projectile>::Extracted>::from(x),
-                ));
+                extract.bytes.extend(bytemuck::bytes_of(&x.extract()));
             });
         extract.len = count;
     }
 
     fn as_sub_particle_system(&mut self) -> Option<&mut dyn ErasedSubParticleSystem> {
-        ParticleSystem::as_sub_particle_system(self)
+        ProjectileSystem::as_sub_particle_system(self)
     }
 
     fn as_event_particle_system(&mut self) -> Option<&mut dyn ErasedEventParticleSystem> {
-        ParticleSystem::as_event_particle_system(self)
+        ProjectileSystem::as_event_particle_system(self)
     }
 
-    fn render_trail(&self, buffer: &ParticleBuffer, trail: &mut TrailMeshBuilder) {
+    fn render_trail(&self, buffer: &ProjectileBuffer, trail: &mut TrailMeshBuilder) {
         buffer
             .get::<T::Projectile>()
             .iter()
             .for_each(|x| trail.build_plane(x.trail().iter().copied(), 0.0..1.0))
     }
 
-    fn should_despawn(&mut self, buffer: &ParticleBuffer) -> bool {
+    fn should_despawn(&self, buffer: &ProjectileBuffer) -> bool {
         buffer.len == 0
     }
 }

@@ -2,10 +2,10 @@
 mod util;
 use berdicles::{
     util::{random_circle, transform_from_derivative},
-    DefaultInstanceBuffer, ErasedEventParticleSystem, ErasedSubParticleSystem, EventParticleSystem,
-    ExpirationState, InstancedMaterial3d, ParticleEvent, ParticleEventBuffer, ParticleEventType,
-    ParticleSystem, Projectile, ProjectileCluster, ProjectileParent, ProjectilePlugin,
-    StandardParticle, SubParticleSystem,
+    ErasedEventParticleSystem, ErasedSubParticleSystem, EventProjectileSystem, ExpirationState,
+    InstancedMaterial3d, ParticleEventType, Projectile, ProjectileCluster, ProjectileEvent,
+    ProjectileEventBuffer, ProjectileParent, ProjectilePlugin, ProjectileSystem, StandardParticle,
+    SubProjectileSystem,
 };
 use bevy::{prelude::*, window::PresentMode};
 use std::f32::consts::PI;
@@ -42,8 +42,6 @@ pub struct MainParticle {
 }
 
 impl Projectile for MainParticle {
-    type Extracted = DefaultInstanceBuffer;
-
     fn get_seed(&self) -> f32 {
         self.seed
     }
@@ -80,7 +78,7 @@ impl Projectile for MainParticle {
 
 pub struct MainSpawner(f32);
 
-impl ParticleSystem for MainSpawner {
+impl ProjectileSystem for MainSpawner {
     type Projectile = MainParticle;
 
     fn capacity(&self) -> usize {
@@ -111,8 +109,6 @@ pub struct TrailParticle {
 }
 
 impl Projectile for TrailParticle {
-    type Extracted = DefaultInstanceBuffer;
-
     fn get_seed(&self) -> f32 {
         self.seed
     }
@@ -147,7 +143,7 @@ impl Projectile for TrailParticle {
 
 pub struct ChildSpawner(f32);
 
-impl ParticleSystem for ChildSpawner {
+impl ProjectileSystem for ChildSpawner {
     type Projectile = TrailParticle;
 
     fn capacity(&self) -> usize {
@@ -167,7 +163,7 @@ impl ParticleSystem for ChildSpawner {
     }
 }
 
-impl SubParticleSystem for ChildSpawner {
+impl SubProjectileSystem for ChildSpawner {
     type Parent = MainParticle;
 
     fn spawn_step_sub(&mut self, parent: &mut Self::Parent, dt: f32) -> usize {
@@ -177,7 +173,7 @@ impl SubParticleSystem for ChildSpawner {
         result
     }
 
-    fn into_sub_particle(parent: &Self::Parent, seed: f32) -> Self::Projectile {
+    fn build_sub_projectile(parent: &Self::Parent, seed: f32) -> Self::Projectile {
         TrailParticle {
             origin: parent
                 .get_transform()
@@ -196,8 +192,6 @@ pub struct CollisionParticle {
 }
 
 impl Projectile for CollisionParticle {
-    type Extracted = DefaultInstanceBuffer;
-
     fn get_seed(&self) -> f32 {
         self.seed
     }
@@ -229,7 +223,7 @@ impl Projectile for CollisionParticle {
 
 pub struct CollisionSpawner;
 
-impl ParticleSystem for CollisionSpawner {
+impl ProjectileSystem for CollisionSpawner {
     type Projectile = CollisionParticle;
 
     fn capacity(&self) -> usize {
@@ -249,15 +243,15 @@ impl ParticleSystem for CollisionSpawner {
     }
 }
 
-impl EventParticleSystem for CollisionSpawner {
-    fn spawn_on_event(&mut self, parent: &ParticleEvent) -> usize {
+impl EventProjectileSystem for CollisionSpawner {
+    fn spawn_on_event(&mut self, parent: &ProjectileEvent) -> usize {
         match parent.event {
             ParticleEventType::Explode => 12,
             _ => 0,
         }
     }
 
-    fn into_sub_particle(parent: &ParticleEvent, seed: f32) -> Self::Projectile {
+    fn build_sub_projectile(parent: &ProjectileEvent, seed: f32) -> Self::Projectile {
         CollisionParticle {
             origin: parent.position,
             seed,
@@ -294,7 +288,7 @@ fn setup(
                 alpha_mode: AlphaMode::Opaque,
                 ..Default::default()
             })),
-            ParticleEventBuffer::default(),
+            ProjectileEventBuffer::default(),
         ))
         .id();
 

@@ -4,8 +4,8 @@ mod util;
 
 use berdicles::{
     util::{random_sphere, transform_from_derivative},
-    DefaultInstanceBuffer, ExpirationState, InstancedMaterial3d, ParticleSystem, Projectile,
-    ProjectileCluster, ProjectilePlugin, StandardParticle,
+    ExpirationState, InstancedMaterial3d, Projectile, ProjectileCluster, ProjectilePlugin,
+    ProjectileSystem, StandardParticle,
 };
 use bevy::{prelude::*, window::PresentMode};
 use std::f32::consts::PI;
@@ -37,8 +37,6 @@ pub struct MyParticle {
 }
 
 impl Projectile for MyParticle {
-    type Extracted = DefaultInstanceBuffer;
-
     fn get_seed(&self) -> f32 {
         self.seed
     }
@@ -71,7 +69,7 @@ impl Projectile for MyParticle {
 
 pub struct MySpawner(f32);
 
-impl ParticleSystem for MySpawner {
+impl ProjectileSystem for MySpawner {
     type Projectile = MyParticle;
 
     fn capacity(&self) -> usize {

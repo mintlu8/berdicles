@@ -28,6 +28,7 @@ use bevy::{
     },
     utils::HashMap,
 };
+use bitflags::bitflags;
 
 use crate::{
     extract_meta,
@@ -143,15 +144,22 @@ fn queue_particles<M: InstancedMaterial>(
             };
             let mut key =
                 view_key | MeshPipelineKey::from_primitive_topology(mesh.primitive_topology());
-            if let Some(mode) = extracted_meta
+            let Some((alpha_mode, pipeline_key)) = extracted_meta
                 .entity_material
                 .get(entity)
-                .and_then(|m| extracted_meta.alpha_modes.get(m))
-            {
-                key |= alpha_mode_pipeline_key(*mode, msaa);
-            }
+                .and_then(|m| extracted_meta.mode.get(m))
+            else {
+                continue;
+            };
+            key |= alpha_mode_pipeline_key(*alpha_mode, msaa);
+
             let pipeline = pipelines
-                .specialize(&pipeline_cache, &custom_pipeline, key, &mesh.layout)
+                .specialize(
+                    &pipeline_cache,
+                    &custom_pipeline,
+                    (key, *pipeline_key),
+                    &mesh.layout,
+                )
                 .unwrap();
             match alpha {
                 AlphaMode::Opaque | AlphaMode::Mask(_) => {
@@ -289,15 +297,24 @@ impl<M: InstancedMaterial> FromWorld for ParticlePipeline<M> {
     }
 }
 
+bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub struct InstancedPipelineKey: u32 {
+        const CULL_FRONT = 1;
+        const CULL_BACK = 2;
+        const BILLBOARD = 4;
+    }
+}
+
 impl<M: InstancedMaterial> SpecializedMeshPipeline for ParticlePipeline<M> {
-    type Key = MeshPipelineKey;
+    type Key = (MeshPipelineKey, InstancedPipelineKey);
 
     fn specialize(
         &self,
-        key: Self::Key,
+        (mesh_key, mat_key): Self::Key,
         layout: &MeshVertexBufferLayoutRef,
     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
-        let mut descriptor = self.mesh_pipeline.specialize(key, layout)?;
+        let mut descriptor = self.mesh_pipeline.specialize(mesh_key, layout)?;
         descriptor.vertex.shader = self.vertex_shader.clone();
         descriptor
             .vertex
@@ -306,6 +323,18 @@ impl<M: InstancedMaterial> SpecializedMeshPipeline for ParticlePipeline<M> {
         descriptor.layout[1] = self.transform_layout.clone();
         descriptor.layout.insert(2, self.material_layout.clone());
         descriptor.fragment.as_mut().unwrap().shader = self.fragment_shader.clone();
+        if mat_key.contains(InstancedPipelineKey::CULL_FRONT) {
+            descriptor.primitive.cull_mode = Some(Face::Front);
+        }
+        if mat_key.contains(InstancedPipelineKey::CULL_BACK) {
+            descriptor.primitive.cull_mode = Some(Face::Back);
+        }
+        if mat_key.contains(InstancedPipelineKey::BILLBOARD) {
+            descriptor
+                .vertex
+                .shader_defs
+                .push(ShaderDefVal::Bool("BILLBOARD".into(), true));
+        }
         Ok(descriptor)
     }
 }
