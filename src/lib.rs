@@ -10,21 +10,24 @@ use std::{
 use bevy::{
     app::{Plugin, Update},
     asset::Assets,
-    color::{ColorToComponents, Srgba},
-    math::{Quat, Vec3},
+    color::Srgba,
+    math::Vec3,
+    pbr::MaterialPlugin,
     prelude::{Component, DetectChanges, Entity, IntoSystemConfigs, Query, Ref, Res, Visibility},
-    render::{render_resource::Shader, ExtractSchedule, RenderApp},
+    render::{render_resource::Shader, ExtractSchedule, Render, RenderApp, RenderSet},
     time::{Time, Virtual},
     transform::components::{GlobalTransform, Transform},
 };
 use noop::NoopParticleSystem;
 
 mod extract;
-pub use extract::*;
+pub(crate) use extract::*;
+pub use extract::{HairParticles, ProjectileRef};
 mod material;
 pub use material::*;
 mod pipeline;
-pub use pipeline::ProjectileMaterialPlugin;
+pub use pipeline::InstancedMaterialPlugin;
+use pipeline::{prepare_instance_buffers, prepare_transforms};
 pub mod shader;
 mod sub;
 pub use sub::*;
@@ -32,10 +35,8 @@ mod buffer;
 pub mod trail;
 pub mod util;
 pub use buffer::*;
-use trail::{trail_rendering, TrailParticleSystem};
+use trail::{trail_rendering, TrailMaterial, TrailMeshBuilder};
 mod noop;
-mod ring_buffer;
-pub use ring_buffer::RingBuffer;
 // mod billboard;
 // pub use billboard::*;
 pub mod templates;
@@ -44,7 +45,7 @@ pub mod templates;
 ///
 /// Adds support for [`StandardParticle`],
 /// other particle materials must be manually added via
-/// [`ParticleMaterialPlugin`].
+/// [`InstancedMaterialPlugin`].
 pub struct ProjectilePlugin;
 
 impl Plugin for ProjectilePlugin {
@@ -63,11 +64,23 @@ impl Plugin for ProjectilePlugin {
                 "berdicle/particle_fragment.wgsl",
             ),
         );
-        app.add_plugins(ProjectileMaterialPlugin::<StandardProjectile>::default());
+        app.world_mut().resource_mut::<Assets<Shader>>().insert(
+            &shader::TRAIL_VERTEX,
+            Shader::from_wgsl(
+                include_str!("./trail_vertex.wgsl"),
+                "berdicle/trail_vertex.wgsl",
+            ),
+        );
+        app.add_plugins(MaterialPlugin::<TrailMaterial>::default());
+        app.add_plugins(InstancedMaterialPlugin::<StandardParticle>::default());
         app.add_systems(Update, projectile_simulation_system);
         app.add_systems(Update, trail_rendering.after(projectile_simulation_system));
         app.sub_app_mut(RenderApp)
-            .add_systems(ExtractSchedule, (extract_clean, extract_buffers).chain());
+            .add_systems(ExtractSchedule, (extract_clean, extract_buffers).chain())
+            .add_systems(
+                Render,
+                (prepare_transforms, prepare_instance_buffers).in_set(RenderSet::PrepareResources),
+            );
     }
 }
 
@@ -178,15 +191,21 @@ impl ExpirationState {
 }
 
 /// A [`Particle`]. Must be [`Copy`] and have alignment less than `16`.
-pub trait Particle: Copy + 'static {
+pub trait Projectile: Copy + 'static {
+    type Extracted: ProjectileInstanceBuffer + for<'t> From<&'t Self>;
+
     /// Obtain the seed used to generate the particle.
-    fn get_seed(&self) -> f32;
+    fn get_seed(&self) -> f32 {
+        0.
+    }
     /// Obtain the index of the particle inserted, optional.
     fn get_index(&self) -> u32 {
         0
     }
     /// Obtain the time span for which the particle is alive.
-    fn get_lifetime(&self) -> f32;
+    fn get_lifetime(&self) -> f32 {
+        0.
+    }
     /// Obtain a value, usually normalized lifetime in `0.0..=1.0`, but not a requirement.
     fn get_fac(&self) -> f32 {
         self.get_lifetime()
@@ -229,19 +248,29 @@ pub trait Particle: Copy + 'static {
         }
     }
 
-    /// Obtain if and how this particle has expired.
-    /// If rendering trails, this does not affect the aliveness of the trail.
-    ///
-    /// If paired with an [`ParticleEventBuffer`], the type of expiration will be written there.
+    /// Obtain if and how this particle (mesh part) has expired.
     fn expiration_state(&self) -> ExpirationState;
 
-    /// Returns true if the particle has expired.
+    /// Returns true if the main particle has expired, trails should no be considered.
     fn is_expired(&self) -> bool {
         self.expiration_state().is_expired()
+    }
+
+    /// Returns true if the particle should be removed.
+    ///
+    /// If rendering trails, consider modifying this function to keep them alive longer.
+    fn should_despawn(&self) -> bool {
+        self.expiration_state().is_expired()
+    }
+
+    /// Obtain a list of points and widths for trail rendering.
+    fn trail(&self) -> &[(Vec3, f32)] {
+        &[]
     }
 }
 
 /// A particle spawner type.
+#[allow(unused_variables)]
 pub trait ParticleSystem {
     /// If true, ignore [`Transform`] and [`GlobalTransform`].
     const WORLD_SPACE: bool = false;
@@ -255,15 +284,12 @@ pub trait ParticleSystem {
     /// If rendering trails using ring buffer, capacity for detached trails should be reserved.
     const STRATEGY: ParticleBufferStrategy = ParticleBufferStrategy::Retain;
 
-    /// If not 0, render ribbons.
-    const RIBBON_LENGTH: usize = 0;
-
     /// Particle type of the system.
     ///
     /// # Panics
     ///
     /// If alignment is not in `1`, `2`, `4`, `8` or `16`.
-    type Particle: Particle;
+    type Projectile: Projectile;
 
     /// Obtain debug information.
     ///
@@ -295,16 +321,14 @@ pub trait ParticleSystem {
     ///
     /// If `spawn_step` is always `0`,
     /// it's safe to implement with [`unreachable!`].
-    fn build_particle(&self, seed: f32) -> Self::Particle;
+    fn build_particle(&self, seed: f32) -> Self::Projectile;
 
     /// Additional actions to perform during update.
     ///
     /// if rendering trails using `Retain`, we should call [`ParticleBuffer::update_detached`] here.
-    #[allow(unused_variables)]
     fn on_update(&mut self, dt: f32, buffer: &mut ParticleBuffer) {}
 
     /// If rendering trails using `Retain`, call [`ParticleBuffer::detach_slice`].
-    #[allow(unused_variables)]
     fn detach_slice(&mut self, detached: Range<usize>, buffer: &mut ParticleBuffer) {}
 
     /// Perform a meta action on the ParticleSystem.
@@ -351,11 +375,6 @@ pub trait ParticleSystem {
     fn as_event_particle_system(&mut self) -> Option<&mut dyn ErasedEventParticleSystem> {
         None
     }
-
-    /// Downcast into a [`TrailParticleSystem`], requires `Self::Particle` to be a [`TrailedParticle`](trail::TrailedParticle).
-    fn as_trail_particle_system(&mut self) -> Option<&mut dyn TrailParticleSystem> {
-        None
-    }
 }
 
 /// Type erased version of [`ParticleSystem`].
@@ -384,21 +403,16 @@ pub trait ErasedParticleSystem: Send + Sync {
     /// Update the global position of the spawner.
     #[allow(unused_variables)]
     fn update_position(&mut self, transform: &GlobalTransform);
+    /// Obtain a list of points and widths for trail rendering.
+    fn render_trail(&self, buffer: &ParticleBuffer, trail: &mut TrailMeshBuilder);
     /// Perform a meta action on the ParticleSystem.
     fn apply_meta(&mut self, command: &dyn Any, buffer: &mut ParticleBuffer);
-    fn extract(
-        &self,
-        buffer: &ParticleBuffer,
-        transform: &GlobalTransform,
-        billboard: Option<Quat>,
-        vec: &mut Vec<ExtractedProjectile>,
-    );
+    /// Extract into a instance buffer.
+    fn extract(&self, buffer: &ParticleBuffer, vec: &mut ErasedExtractBuffer);
     /// Downcast into a [`SubParticleSystem`];
     fn as_sub_particle_system(&mut self) -> Option<&mut dyn ErasedSubParticleSystem>;
     /// Downcast into a [`EventParticleSystem`];
     fn as_event_particle_system(&mut self) -> Option<&mut dyn ErasedEventParticleSystem>;
-    /// Downcast into a [`TrailParticleSystem`];
-    fn as_trail_particle_system(&mut self) -> Option<&mut dyn TrailParticleSystem>;
     /// Checks if all particles and trails are despawned.
     ///
     /// Be careful this is usually true on the first frame as well.
@@ -448,7 +462,7 @@ impl DerefMut for ProjectileCluster {
     }
 }
 
-fn spawn_particle<T: ParticleSystem>(particles: &mut T) -> T::Particle {
+fn spawn_particle<T: ParticleSystem>(particles: &mut T) -> T::Projectile {
     let seed = particles.rng();
     particles.build_particle(seed)
 }
@@ -477,25 +491,25 @@ where
         match Self::STRATEGY {
             ParticleBufferStrategy::Retain => {
                 let original_len = buffer.len;
-                let buf = buffer.get_mut::<T::Particle>();
+                let buf = buffer.get_mut::<T::Projectile>();
                 let mut len = 0;
                 for item in buf.iter_mut() {
                     item.update(dt);
-                    len += (!item.is_expired()) as usize
+                    len += (!item.should_despawn()) as usize
                 }
                 if len != original_len {
-                    sort_unstable(buf, |x| x.is_expired());
+                    sort_unstable(buf, |x| x.should_despawn());
                     self.detach_slice(len..original_len, buffer)
                 }
                 buffer.len = len;
                 buffer.extend((0..self.spawn_step(dt)).map(|_| spawn_particle(self)))
             }
             ParticleBufferStrategy::RingBuffer => {
-                let buf = buffer.get_mut::<T::Particle>();
+                let buf = buffer.get_mut::<T::Projectile>();
                 let mut len = 0;
                 for item in buf {
                     item.update(dt);
-                    len += (!item.is_expired()) as usize
+                    len += (!item.should_despawn()) as usize
                 }
                 buffer.len = len;
                 buffer.extend((0..self.spawn_step(dt)).map(|_| spawn_particle(self)))
@@ -513,7 +527,7 @@ where
         match Self::STRATEGY {
             ParticleBufferStrategy::Retain => {
                 let original_len = buffer.len;
-                let buf = buffer.get_mut::<T::Particle>();
+                let buf = buffer.get_mut::<T::Projectile>();
                 let mut len = 0;
                 for item in buf.iter_mut() {
                     item.update_with_event_buffer(dt, events);
@@ -527,7 +541,7 @@ where
                 buffer.extend((0..self.spawn_step(dt)).map(|_| spawn_particle(self)))
             }
             ParticleBufferStrategy::RingBuffer => {
-                let buf = buffer.get_mut::<T::Particle>();
+                let buf = buffer.get_mut::<T::Projectile>();
                 let mut len = 0;
                 for item in buf {
                     item.update_with_event_buffer(dt, events);
@@ -543,10 +557,10 @@ where
     fn spawn_particle_buffer(&self) -> ParticleBuffer {
         match Self::STRATEGY {
             ParticleBufferStrategy::Retain => {
-                ParticleBuffer::new_retain::<T::Particle>(self.capacity())
+                ParticleBuffer::new_retain::<T::Projectile>(self.capacity())
             }
             ParticleBufferStrategy::RingBuffer => {
-                ParticleBuffer::new_ring::<T::Particle>(self.capacity())
+                ParticleBuffer::new_ring::<T::Projectile>(self.capacity())
             }
         }
     }
@@ -559,54 +573,23 @@ where
         ParticleSystem::apply_meta(self, command, buffer)
     }
 
-    #[allow(clippy::collapsible_else_if)]
-    fn extract(
-        &self,
-        buffer: &ParticleBuffer,
-        transform: &GlobalTransform,
-        billboard: Option<Quat>,
-        vec: &mut Vec<ExtractedProjectile>,
-    ) {
-        vec.clear();
-        vec.extend(
-            buffer
-                .get::<T::Particle>()
-                .iter()
-                .filter(|x| !x.is_expired())
-                .map(|x| {
-                    let transform = if let Some(bb) = billboard {
-                        if T::WORLD_SPACE {
-                            x.get_transform().with_rotation(bb).compute_matrix()
-                        } else {
-                            let (scale, _, translation) = transform
-                                .mul_transform(x.get_transform())
-                                .to_scale_rotation_translation();
-                            Transform {
-                                translation,
-                                rotation: bb,
-                                scale,
-                            }
-                            .compute_matrix()
-                        }
-                    } else {
-                        if T::WORLD_SPACE {
-                            x.get_transform().compute_matrix()
-                        } else {
-                            transform.mul_transform(x.get_transform()).compute_matrix()
-                        }
-                    };
-                    ExtractedProjectile {
-                        index: x.get_index(),
-                        lifetime: x.get_lifetime(),
-                        seed: x.get_seed(),
-                        fac: x.get_fac(),
-                        color: x.get_color().to_vec4(),
-                        transform_x: transform.row(0),
-                        transform_y: transform.row(1),
-                        transform_z: transform.row(2),
-                    }
-                }),
-        )
+    fn extract(&self, buffer: &ParticleBuffer, extract: &mut ErasedExtractBuffer) {
+        extract
+            .bytes
+            .reserve(buffer.len * size_of::<<T::Projectile as Projectile>::Extracted>());
+        let mut count = 0;
+        extract.bytes.clear();
+        buffer
+            .get::<T::Projectile>()
+            .iter()
+            .filter(|x| !x.is_expired())
+            .for_each(|x| {
+                count += 1;
+                extract.bytes.extend(bytemuck::bytes_of(
+                    &<<T::Projectile as Projectile>::Extracted>::from(x),
+                ));
+            });
+        extract.len = count;
     }
 
     fn as_sub_particle_system(&mut self) -> Option<&mut dyn ErasedSubParticleSystem> {
@@ -617,19 +600,15 @@ where
         ParticleSystem::as_event_particle_system(self)
     }
 
-    fn as_trail_particle_system(&mut self) -> Option<&mut dyn TrailParticleSystem> {
-        ParticleSystem::as_trail_particle_system(self)
+    fn render_trail(&self, buffer: &ParticleBuffer, trail: &mut TrailMeshBuilder) {
+        buffer
+            .get::<T::Projectile>()
+            .iter()
+            .for_each(|x| trail.build_plane(x.trail().iter().copied(), 0.0..1.0))
     }
 
     fn should_despawn(&mut self, buffer: &ParticleBuffer) -> bool {
-        if buffer.len != 0 {
-            return false;
-        }
-        if let Some(trails) = self.as_trail_particle_system() {
-            trails.should_despawn(buffer)
-        } else {
-            true
-        }
+        buffer.len == 0
     }
 }
 

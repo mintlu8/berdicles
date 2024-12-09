@@ -1,13 +1,13 @@
 //! A shader that renders a mesh multiple times in one draw call.
 
-use std::marker::PhantomData;
+use std::{cell::OnceCell, marker::PhantomData};
 
 use bevy::{
-    core_pipeline::core_3d::{AlphaMask3d, Opaque3d, Transparent3d},
-    ecs::system::{lifetimeless::SRes, SystemParamItem},
+    core_pipeline::core_3d::{AlphaMask3d, Opaque3d, Opaque3dBinKey, Transparent3d},
+    ecs::system::{lifetimeless::SRes, StaticSystemParam, SystemParamItem},
     pbr::{
         alpha_mode_pipeline_key, MeshPipeline, MeshPipelineKey, RenderMeshInstances,
-        SetMeshBindGroup, SetMeshViewBindGroup,
+        SetMeshViewBindGroup,
     },
     prelude::*,
     render::{
@@ -16,43 +16,43 @@ use bevy::{
         },
         render_asset::{PrepareAssetError, RenderAsset, RenderAssetPlugin, RenderAssets},
         render_phase::{
-            AddRenderCommand, DrawFunctions, PhaseItem, PhaseItemExtraIndex, RenderCommand,
-            RenderCommandResult, SetItemPipeline, TrackedRenderPass, ViewSortedRenderPhases,
+            AddRenderCommand, BinnedRenderPhaseType, DrawFunctions, PhaseItem, PhaseItemExtraIndex,
+            RenderCommand, RenderCommandResult, SetItemPipeline, TrackedRenderPass,
+            ViewBinnedRenderPhases, ViewSortedRenderPhases,
         },
         render_resource::*,
         renderer::RenderDevice,
+        sync_world::MainEntity,
         view::ExtractedView,
         Render, RenderApp, RenderSet,
     },
+    utils::HashMap,
 };
 
 use crate::{
     extract_meta,
     shader::{PARTICLE_FRAGMENT, PARTICLE_VERTEX},
-    ExtractedProjectileBuffers, ExtractedProjectileMeta, PreparedInstanceBuffers,
-    ProjectileInstanceBuffer, ProjectileMaterial,
+    ExtractedProjectileBuffers, ExtractedProjectileMeta, ExtractedTransforms, InstancedMaterial,
+    PreparedInstanceBuffers, ProjectileInstanceBuffer,
 };
 
-/// Add particle rendering pipeline for a [`Material`].
-///
-/// You should **NOT** add the corresponding `MaterialPlugin`,
-/// as `ParticleSystemBundle` is also a valid `MaterialMeshBundle`.
+/// Add particle rendering pipeline for an [`InstancedMaterial`].
 #[derive(Clone)]
-pub struct ProjectileMaterialPlugin<M: ProjectileMaterial>(PhantomData<M>);
+pub struct InstancedMaterialPlugin<M: InstancedMaterial>(PhantomData<M>);
 
-impl<M: ProjectileMaterial> Default for ProjectileMaterialPlugin<M> {
+impl<M: InstancedMaterial> Default for InstancedMaterialPlugin<M> {
     fn default() -> Self {
         Self(PhantomData)
     }
 }
 
-impl<M: ProjectileMaterial> ProjectileMaterialPlugin<M> {
+impl<M: InstancedMaterial> InstancedMaterialPlugin<M> {
     pub fn new() -> Self {
         Self(PhantomData)
     }
 }
 
-impl<M: ProjectileMaterial> Plugin for ProjectileMaterialPlugin<M> {
+impl<M: InstancedMaterial> Plugin for InstancedMaterialPlugin<M> {
     fn build(&self, app: &mut App) {
         app.init_asset::<M>()
             .add_plugins((RenderAssetPlugin::<PreparedProjectile<M>>::default(),));
@@ -62,13 +62,7 @@ impl<M: ProjectileMaterial> Plugin for ProjectileMaterialPlugin<M> {
             .add_render_command::<Opaque3d, RenderParticles<M>>()
             .add_render_command::<AlphaMask3d, RenderParticles<M>>()
             .init_resource::<SpecializedMeshPipelines<ParticlePipeline<M>>>()
-            .add_systems(
-                Render,
-                (
-                    queue_particles::<M>.in_set(RenderSet::QueueMeshes),
-                    prepare_instance_buffers.in_set(RenderSet::PrepareResources),
-                ),
-            );
+            .add_systems(Render, queue_particles::<M>.in_set(RenderSet::QueueMeshes));
     }
 
     fn finish(&self, app: &mut App) {
@@ -77,12 +71,12 @@ impl<M: ProjectileMaterial> Plugin for ProjectileMaterialPlugin<M> {
     }
 }
 /// Data prepared for a [`Material`] instance.
-pub struct PreparedProjectile<T: ProjectileMaterial> {
+pub struct PreparedProjectile<T: InstancedMaterial> {
     pub bind_group: BindGroup,
     pub p: PhantomData<T>,
 }
 
-impl<M: ProjectileMaterial> RenderAsset for PreparedProjectile<M> {
+impl<M: InstancedMaterial> RenderAsset for PreparedProjectile<M> {
     type SourceAsset = M;
 
     type Param = (SRes<RenderDevice>, SRes<ParticlePipeline<M>>, M::Param);
@@ -104,24 +98,32 @@ impl<M: ProjectileMaterial> RenderAsset for PreparedProjectile<M> {
     }
 }
 
-fn queue_particles<M: ProjectileMaterial>(
+fn queue_particles<M: InstancedMaterial>(
+    opaque_3d_draw_functions: Res<DrawFunctions<Opaque3d>>,
     transparent_3d_draw_functions: Res<DrawFunctions<Transparent3d>>,
     custom_pipeline: Res<ParticlePipeline<M>>,
     mut pipelines: ResMut<SpecializedMeshPipelines<ParticlePipeline<M>>>,
     pipeline_cache: Res<PipelineCache>,
     meshes: Res<RenderAssets<RenderMesh>>,
     render_mesh_instances: Res<RenderMeshInstances>,
-    material_instances: Res<ExtractedProjectileMeta<M>>,
+    extracted_meta: Res<ExtractedProjectileMeta<M>>,
     material_meshes: Res<ExtractedProjectileBuffers>,
+    mut opaque_render_phases: ResMut<ViewBinnedRenderPhases<Opaque3d>>,
     mut transparent_render_phases: ResMut<ViewSortedRenderPhases<Transparent3d>>,
     mut views: Query<(Entity, &ExtractedView, &Msaa)>,
 ) {
-    let draw_custom = transparent_3d_draw_functions
+    let draw_opaque = opaque_3d_draw_functions.read().id::<RenderParticles<M>>();
+
+    let draw_transparent = transparent_3d_draw_functions
         .read()
         .id::<RenderParticles<M>>();
 
     for (view_entity, view, msaa) in &mut views {
         let msaa_key = MeshPipelineKey::from_msaa_samples(msaa.samples());
+
+        let Some(opaque_phase) = opaque_render_phases.get_mut(&view_entity) else {
+            continue;
+        };
 
         let Some(transparent_phase) = transparent_render_phases.get_mut(&view_entity) else {
             continue;
@@ -136,37 +138,56 @@ fn queue_particles<M: ProjectileMaterial>(
             let Some(mesh) = meshes.get(mesh_instance.mesh_asset_id) else {
                 continue;
             };
+            let Some(alpha) = extracted_meta.get_alpha(entity) else {
+                continue;
+            };
             let mut key =
                 view_key | MeshPipelineKey::from_primitive_topology(mesh.primitive_topology());
-            if let Some(mode) = material_instances
+            if let Some(mode) = extracted_meta
                 .entity_material
                 .get(entity)
-                .and_then(|m| material_instances.alpha_modes.get(m))
+                .and_then(|m| extracted_meta.alpha_modes.get(m))
             {
                 key |= alpha_mode_pipeline_key(*mode, msaa);
             }
             let pipeline = pipelines
                 .specialize(&pipeline_cache, &custom_pipeline, key, &mesh.layout)
                 .unwrap();
-            transparent_phase.add(Transparent3d {
-                entity: (**entity, *entity),
-                pipeline,
-                draw_function: draw_custom,
-                distance: rangefinder.distance_translation(&mesh_instance.translation),
-                batch_range: 0..1,
-                extra_index: PhaseItemExtraIndex::NONE,
-            });
+            match alpha {
+                AlphaMode::Opaque | AlphaMode::Mask(_) => {
+                    // todo: maybe we can batch?
+                    opaque_phase.add(
+                        Opaque3dBinKey {
+                            pipeline,
+                            draw_function: draw_opaque,
+                            asset_id: mesh_instance.mesh_asset_id.untyped(),
+                            material_bind_group_id: None,
+                            lightmap_image: None,
+                        },
+                        (**entity, *entity),
+                        BinnedRenderPhaseType::NonMesh,
+                    )
+                }
+                _ => transparent_phase.add(Transparent3d {
+                    entity: (**entity, *entity),
+                    pipeline,
+                    draw_function: draw_transparent,
+                    distance: rangefinder.distance_translation(&mesh_instance.translation),
+                    batch_range: 0..1,
+                    extra_index: PhaseItemExtraIndex::NONE,
+                }),
+            }
         }
     }
 }
 
 #[derive(Clone)]
-pub struct ParticleInstanceBuffer {
+pub struct InstanceBuffer {
     pub(crate) buffer: Buffer,
     pub(crate) length: usize,
 }
 
-fn prepare_instance_buffers(
+pub(crate) fn prepare_instance_buffers(
     mut commands: Commands,
     query: Res<ExtractedProjectileBuffers>,
     render_device: Res<RenderDevice>,
@@ -180,7 +201,7 @@ fn prepare_instance_buffers(
         });
         result.buffers.insert(
             *entity,
-            ParticleInstanceBuffer {
+            InstanceBuffer {
                 buffer,
                 length: instance_data.len(),
             },
@@ -197,16 +218,55 @@ fn prepare_instance_buffers(
     commands.insert_resource(result);
 }
 
+#[derive(Debug, Deref, DerefMut, Resource)]
+pub struct IdentityTransformBindGroup(BindGroup);
+
+#[derive(Debug, Default, Deref, DerefMut, Resource)]
+pub struct PreparedTransforms(HashMap<MainEntity, BindGroup>);
+
+pub(crate) fn prepare_transforms(
+    layout: Local<OnceCell<BindGroupLayout>>,
+    mut commands: Commands,
+    device: Res<RenderDevice>,
+    query: Res<ExtractedTransforms>,
+    identity: Option<Res<IdentityTransformBindGroup>>,
+    mut param: StaticSystemParam<<TransformBindGroup as AsBindGroup>::Param>,
+) {
+    let layout = layout.get_or_init(|| TransformBindGroup::bind_group_layout(&device));
+    commands.insert_resource(PreparedTransforms(
+        query
+            .iter()
+            .filter_map(|(entity, transform)| {
+                Some((
+                    *entity,
+                    TransformBindGroup::from(*transform)
+                        .as_bind_group(layout, &device, &mut param)
+                        .ok()?
+                        .bind_group,
+                ))
+            })
+            .collect(),
+    ));
+    if identity.is_none() {
+        if let Ok(bind_group) = TransformBindGroup::from(GlobalTransform::IDENTITY)
+            .as_bind_group(layout, &device, &mut param)
+        {
+            commands.insert_resource(IdentityTransformBindGroup(bind_group.bind_group));
+        }
+    }
+}
+
 #[derive(Resource)]
-pub struct ParticlePipeline<M: ProjectileMaterial> {
+pub struct ParticlePipeline<M: InstancedMaterial> {
     mesh_pipeline: MeshPipeline,
     vertex_shader: Handle<Shader>,
     fragment_shader: Handle<Shader>,
+    transform_layout: BindGroupLayout,
     material_layout: BindGroupLayout,
     p: PhantomData<M>,
 }
 
-impl<M: ProjectileMaterial> FromWorld for ParticlePipeline<M> {
+impl<M: InstancedMaterial> FromWorld for ParticlePipeline<M> {
     fn from_world(world: &mut World) -> Self {
         let mesh_pipeline = world.resource::<MeshPipeline>();
         let render_device = world.resource::<RenderDevice>();
@@ -222,13 +282,14 @@ impl<M: ProjectileMaterial> FromWorld for ParticlePipeline<M> {
                 ShaderRef::Handle(handle) => handle.clone(),
                 ShaderRef::Path(path) => world.resource::<AssetServer>().load(path),
             },
+            transform_layout: TransformBindGroup::bind_group_layout(render_device),
             material_layout: M::bind_group_layout(render_device),
             p: PhantomData,
         }
     }
 }
 
-impl<M: ProjectileMaterial> SpecializedMeshPipeline for ParticlePipeline<M> {
+impl<M: InstancedMaterial> SpecializedMeshPipeline for ParticlePipeline<M> {
     type Key = MeshPipelineKey;
 
     fn specialize(
@@ -242,6 +303,7 @@ impl<M: ProjectileMaterial> SpecializedMeshPipeline for ParticlePipeline<M> {
             .vertex
             .buffers
             .push(<M::InstanceBuffer as ProjectileInstanceBuffer>::descriptor());
+        descriptor.layout[1] = self.transform_layout.clone();
         descriptor.layout.insert(2, self.material_layout.clone());
         descriptor.fragment.as_mut().unwrap().shader = self.fragment_shader.clone();
         Ok(descriptor)
@@ -251,14 +313,66 @@ impl<M: ProjectileMaterial> SpecializedMeshPipeline for ParticlePipeline<M> {
 type RenderParticles<M> = (
     SetItemPipeline,
     SetMeshViewBindGroup<0>,
-    SetMeshBindGroup<1>,
+    SetTransformBindGroup<1>,
     SetParticleBindGroup<M, 2>,
     DrawParticlesInstanced,
 );
 
-pub struct SetParticleBindGroup<M: ProjectileMaterial, const I: usize>(PhantomData<M>);
+pub struct SetParticleBindGroup<M: InstancedMaterial, const I: usize>(PhantomData<M>);
 
-impl<P: PhaseItem, M: ProjectileMaterial, const I: usize> RenderCommand<P>
+#[derive(AsBindGroup)]
+pub struct TransformBindGroup {
+    #[uniform(0)]
+    x: Vec4,
+    #[uniform(1)]
+    y: Vec4,
+    #[uniform(2)]
+    z: Vec4,
+}
+
+impl From<GlobalTransform> for TransformBindGroup {
+    fn from(value: GlobalTransform) -> Self {
+        let mat = value.compute_matrix();
+        Self {
+            x: mat.row(0),
+            y: mat.row(1),
+            z: mat.row(2),
+        }
+    }
+}
+
+pub struct SetTransformBindGroup<const I: usize>;
+
+impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetTransformBindGroup<I> {
+    type Param = (
+        SRes<PreparedTransforms>,
+        Option<SRes<IdentityTransformBindGroup>>,
+    );
+
+    type ViewQuery = ();
+
+    type ItemQuery = ();
+
+    fn render<'w>(
+        item: &P,
+        _: (),
+        _: Option<()>,
+        (transforms, identity): SystemParamItem<'w, '_, Self::Param>,
+        pass: &mut TrackedRenderPass<'w>,
+    ) -> RenderCommandResult {
+        if let Some(bind_group) = transforms.into_inner().get(&item.main_entity()) {
+            pass.set_bind_group(I, bind_group, &[]);
+            RenderCommandResult::Success
+        } else if let Some(identity) = identity {
+            pass.set_bind_group(I, &identity.into_inner().0, &[]);
+            RenderCommandResult::Success
+        } else {
+            RenderCommandResult::Skip
+        }
+    }
+}
+
+impl<P: PhaseItem, M: InstancedMaterial, const I: usize> RenderCommand<P>
     for SetParticleBindGroup<M, I>
 {
     type Param = (

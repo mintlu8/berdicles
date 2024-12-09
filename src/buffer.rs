@@ -7,6 +7,7 @@ use std::{
 };
 
 use bevy::{
+    color::ColorToComponents,
     math::Vec4,
     prelude::Component,
     render::{
@@ -18,7 +19,7 @@ use bytemuck::{Pod, Zeroable};
 
 use crate::{
     trail::{TrailBuffer, TrailedParticle},
-    Particle, ProjectileInstanceBuffer,
+    Projectile, ProjectileInstanceBuffer,
 };
 
 fn validate<T>() {
@@ -61,7 +62,7 @@ impl Default for Align16MaybeUninit {
 /// Instance buffer of a particle.
 #[derive(Debug, Clone, Copy, Zeroable, Pod)]
 #[repr(C)]
-pub struct ExtractedProjectile {
+pub struct DefaultInstanceBuffer {
     pub index: u32,
     pub lifetime: f32,
     pub fac: f32,
@@ -72,51 +73,67 @@ pub struct ExtractedProjectile {
     pub color: Vec4,
 }
 
-impl ProjectileInstanceBuffer for ExtractedProjectile {
+impl<T: Projectile> From<&T> for DefaultInstanceBuffer {
+    fn from(x: &T) -> Self {
+        let transform = x.get_transform().compute_matrix();
+        DefaultInstanceBuffer {
+            index: x.get_index(),
+            lifetime: x.get_lifetime(),
+            seed: x.get_seed(),
+            fac: x.get_fac(),
+            color: x.get_color().to_vec4(),
+            transform_x: transform.row(0),
+            transform_y: transform.row(1),
+            transform_z: transform.row(2),
+        }
+    }
+}
+
+impl ProjectileInstanceBuffer for DefaultInstanceBuffer {
     fn descriptor() -> VertexBufferLayout {
         VertexBufferLayout {
-            array_stride: size_of::<ExtractedProjectile>() as u64,
+            array_stride: size_of::<DefaultInstanceBuffer>() as u64,
             step_mode: VertexStepMode::Instance,
             attributes: vec![
                 VertexAttribute {
                     format: VertexFormat::Uint32,
                     offset: 0,
-                    shader_location: 3,
+                    shader_location: 10,
                 },
                 VertexAttribute {
                     format: VertexFormat::Float32,
                     offset: 4,
-                    shader_location: 4,
+                    shader_location: 11,
                 },
                 VertexAttribute {
                     format: VertexFormat::Float32,
                     offset: 8,
-                    shader_location: 5,
+                    shader_location: 12,
                 },
                 VertexAttribute {
                     format: VertexFormat::Float32,
                     offset: 12,
-                    shader_location: 6,
+                    shader_location: 13,
                 },
                 VertexAttribute {
                     format: VertexFormat::Float32x4,
                     offset: 16,
-                    shader_location: 7,
+                    shader_location: 14,
                 },
                 VertexAttribute {
                     format: VertexFormat::Float32x4,
                     offset: 32,
-                    shader_location: 8,
+                    shader_location: 15,
                 },
                 VertexAttribute {
                     format: VertexFormat::Float32x4,
                     offset: 48,
-                    shader_location: 9,
+                    shader_location: 16,
                 },
                 VertexAttribute {
                     format: VertexFormat::Float32x4,
                     offset: 64,
-                    shader_location: 10,
+                    shader_location: 17,
                 },
             ],
         }
@@ -124,19 +141,25 @@ impl ProjectileInstanceBuffer for ExtractedProjectile {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ExtractedParticleBuffer(pub(crate) Arc<Vec<ExtractedProjectile>>);
+pub(crate) struct ExtractedParticleBuffer(pub(crate) Arc<ErasedExtractBuffer>);
+
+#[derive(Debug, Clone, Default)]
+pub struct ErasedExtractBuffer {
+    pub bytes: Vec<u8>,
+    pub len: usize,
+}
 
 impl ExtractedParticleBuffer {
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.0.len == 0
     }
 
     pub fn len(&self) -> usize {
-        self.0.len()
+        self.0.len
     }
 
     pub fn as_bytes(&self) -> &[u8] {
-        bytemuck::cast_slice(self.0.as_ref())
+        &self.0.bytes
     }
 }
 
@@ -165,7 +188,7 @@ pub struct ParticleBuffer {
     /// Ring: number of particles initialized, never goes down.
     pub(crate) ring_capacity: usize,
     /// Allocation of extracted particles on the render world.
-    pub(crate) extracted_allocation: Mutex<Arc<Vec<ExtractedProjectile>>>,
+    pub(crate) extracted_allocation: Mutex<Arc<ErasedExtractBuffer>>,
     /// Type of this should be `Vec<Trail>`.
     pub(crate) detached_trails: Option<Box<dyn Any + Send + Sync>>,
 }
@@ -182,7 +205,7 @@ impl ParticleBuffer {
     }
 
     /// Create a buffer in retain mode.
-    pub fn new_retain<T: Particle>(nominal_capacity: usize) -> Self {
+    pub fn new_retain<T: Projectile>(nominal_capacity: usize) -> Self {
         validate::<T>();
         let real_capacity = (nominal_capacity * size_of::<T>() + 15) / 16;
         let capacity = real_capacity * 16 / size_of::<T>();
@@ -199,7 +222,7 @@ impl ParticleBuffer {
     }
 
     /// Create a buffer in ring buffer mode.
-    pub fn new_ring<T: Particle>(nominal_capacity: usize) -> Self {
+    pub fn new_ring<T: Projectile>(nominal_capacity: usize) -> Self {
         validate::<T>();
         let real_capacity = (nominal_capacity * size_of::<T>() + 15) / 16;
         let capacity = real_capacity * 16 / size_of::<T>();
@@ -220,7 +243,7 @@ impl ParticleBuffer {
     /// # Panics
     ///
     /// If type mismatch or in `uninit` mode.
-    pub fn get<T: Particle>(&self) -> &[T] {
+    pub fn get<T: Projectile>(&self) -> &[T] {
         match self.particle_type {
             ParticleBufferType::Uninit => panic!("Type ID mismatch!"),
             ParticleBufferType::Retain(id) => {
@@ -245,7 +268,7 @@ impl ParticleBuffer {
     /// # Panics
     ///
     /// If type mismatch or in `uninit` mode.
-    pub fn get_mut<T: Particle>(&mut self) -> &mut [T] {
+    pub fn get_mut<T: Projectile>(&mut self) -> &mut [T] {
         match self.particle_type {
             ParticleBufferType::Uninit => panic!("Type ID mismatch!"),
             ParticleBufferType::Retain(id) => {
@@ -273,7 +296,7 @@ impl ParticleBuffer {
     /// # Panics
     ///
     /// If type mismatch or in `uninit` mode.
-    pub fn extend<T: Particle>(&mut self, ext: impl IntoIterator<Item = T>) {
+    pub fn extend<T: Projectile>(&mut self, ext: impl IntoIterator<Item = T>) {
         match self.particle_type {
             ParticleBufferType::Uninit => panic!("Type ID mismatch!"),
             ParticleBufferType::Retain(id) => {
@@ -375,7 +398,7 @@ impl ParticleBuffer {
         {
             trails.retain_mut(|x| {
                 x.update(dt);
-                !x.expired()
+                !x.is_expired()
             })
         }
     }

@@ -4,9 +4,9 @@ mod util;
 
 use berdicles::{
     util::{random_cone, transform_from_derivative},
-    ExpirationState, ExtendedProjectileMat, ExtractedProjectile, Particle, ParticleSystem,
-    ProjectileCluster, ProjectileMat, ProjectileMaterialExtension, ProjectileMaterialPlugin,
-    ProjectilePlugin, ProjectileRef, StandardProjectile,
+    DefaultInstanceBuffer, ExpirationState, ExtendedInstancedMaterial, InstancedMaterial3d,
+    InstancedMaterialExtension, InstancedMaterialPlugin, ParticleSystem, Projectile,
+    ProjectileCluster, ProjectilePlugin, ProjectileRef, StandardParticle,
 };
 use bevy::{
     prelude::*,
@@ -29,8 +29,8 @@ fn main() {
                     ..Default::default()
                 }),
         )
-        .add_plugins(ProjectileMaterialPlugin::<
-            ExtendedProjectileMat<StandardProjectile, SpinMat>,
+        .add_plugins(InstancedMaterialPlugin::<
+            ExtendedInstancedMaterial<StandardParticle, SpinMat>,
         >::default())
         .add_plugins(|a: &mut App| {
             a.world_mut()
@@ -49,7 +49,9 @@ pub struct MyParticle {
     pub life_time: f32,
 }
 
-impl Particle for MyParticle {
+impl Projectile for MyParticle {
+    type Extracted = DefaultInstanceBuffer;
+
     fn get_seed(&self) -> f32 {
         self.seed
     }
@@ -83,7 +85,7 @@ impl Particle for MyParticle {
 pub struct MySpawner(f32);
 
 impl ParticleSystem for MySpawner {
-    type Particle = MyParticle;
+    type Projectile = MyParticle;
 
     fn capacity(&self) -> usize {
         10000
@@ -96,7 +98,7 @@ impl ParticleSystem for MySpawner {
         result
     }
 
-    fn build_particle(&self, seed: f32) -> Self::Particle {
+    fn build_particle(&self, seed: f32) -> Self::Projectile {
         MyParticle {
             seed,
             life_time: 0.,
@@ -138,8 +140,8 @@ pub static SPIN_SHADER: Handle<Shader> = Handle::weak_from_u128(1231234124124124
 #[derive(Debug, Clone, Copy, TypePath, Asset, AsBindGroup)]
 struct SpinMat {}
 
-impl ProjectileMaterialExtension for SpinMat {
-    type InstanceBuffer = ExtractedProjectile;
+impl InstancedMaterialExtension for SpinMat {
+    type InstanceBuffer = DefaultInstanceBuffer;
 
     fn vertex_shader() -> ShaderRef {
         ShaderRef::Handle(SPIN_SHADER.clone())
@@ -151,8 +153,8 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut materials2: ResMut<Assets<StandardProjectile>>,
-    mut materials3: ResMut<Assets<ExtendedProjectileMat<StandardProjectile, SpinMat>>>,
+    mut materials2: ResMut<Assets<StandardParticle>>,
+    mut materials3: ResMut<Assets<ExtendedInstancedMaterial<StandardParticle, SpinMat>>>,
 ) {
     let e = commands
         .spawn((
@@ -170,7 +172,7 @@ fn setup(
                     .rotated_by(Quat::from_rotation_x(-PI / 2.0)),
                 ),
             ),
-            ProjectileMat(materials2.add(StandardProjectile {
+            InstancedMaterial3d(materials2.add(StandardParticle {
                 base_color: LinearRgba::new(2., 2., 2., 1.),
                 texture: images.add(uv_debug_texture()),
                 alpha_mode: AlphaMode::Opaque,
@@ -194,7 +196,7 @@ fn setup(
                 .rotated_by(Quat::from_rotation_x(PI / 2.0)),
             ),
         ),
-        ProjectileMat(materials2.add(StandardProjectile {
+        InstancedMaterial3d(materials2.add(StandardParticle {
             base_color: LinearRgba::new(2., 2., 2., 1.),
             texture: images.add(uv_debug_texture()),
             alpha_mode: AlphaMode::Opaque,
@@ -210,8 +212,8 @@ fn setup(
             mesh.merge(&Mesh::from(Sphere::new(0.1).mesh()).translated_by(Vec3::new(-0.8, 0., 0.)));
             mesh
         })),
-        ProjectileMat(materials3.add(ExtendedProjectileMat {
-            base: StandardProjectile {
+        InstancedMaterial3d(materials3.add(ExtendedInstancedMaterial {
+            base: StandardParticle {
                 base_color: LinearRgba::new(2., 2., 0., 1.),
                 texture: images.add(uv_debug_texture()),
                 alpha_mode: AlphaMode::Opaque,

@@ -2,7 +2,6 @@ use bevy::{
     asset::{Asset, Handle},
     color::LinearRgba,
     ecs::system::SystemParamItem,
-    image::Image,
     prelude::Component,
     reflect::TypePath,
     render::{
@@ -15,18 +14,19 @@ use bevy::{
         renderer::RenderDevice,
     },
 };
+use bevy_image::Image;
 use bytemuck::Pod;
 
 use crate::{
     shader::{PARTICLE_FRAGMENT, PARTICLE_VERTEX},
-    ExtractedProjectile,
+    DefaultInstanceBuffer,
 };
 
 pub trait ProjectileInstanceBuffer: Pod {
     fn descriptor() -> VertexBufferLayout;
 }
 
-pub trait ProjectileMaterial: Asset + AsBindGroup + Clone {
+pub trait InstancedMaterial: Asset + AsBindGroup + Clone {
     type InstanceBuffer: ProjectileInstanceBuffer;
 
     fn vertex_shader() -> ShaderRef {
@@ -46,7 +46,7 @@ pub trait ProjectileMaterial: Asset + AsBindGroup + Clone {
     }
 }
 
-pub trait ProjectileMaterialExtension: Asset + AsBindGroup + Clone {
+pub trait InstancedMaterialExtension: Asset + AsBindGroup + Clone {
     type InstanceBuffer: ProjectileInstanceBuffer;
 
     fn vertex_shader() -> ShaderRef {
@@ -66,12 +66,13 @@ pub trait ProjectileMaterialExtension: Asset + AsBindGroup + Clone {
     }
 }
 
+/// Component form of [`InstancedMaterial`], provides a material for [`ProjectileCluster`](crate::ProjectileCluster).
 #[derive(Debug, Component)]
-pub struct ProjectileMat<T: ProjectileMaterial>(pub Handle<T>);
+pub struct InstancedMaterial3d<T: InstancedMaterial>(pub Handle<T>);
 
-/// [`ProjectileMaterial`] that displays an unlit combination of `base_color` and `texture` on a mesh.
+/// [`InstancedMaterial`] that displays an unlit combination of `base_color` and `texture` on a mesh.
 #[derive(Debug, Clone, Default, PartialEq, TypePath, Asset, AsBindGroup)]
-pub struct StandardProjectile {
+pub struct StandardParticle {
     #[uniform(0)]
     pub billboard: i32,
     #[uniform(1)]
@@ -83,8 +84,8 @@ pub struct StandardProjectile {
     pub cull_mode: Option<Face>,
 }
 
-impl ProjectileMaterial for StandardProjectile {
-    type InstanceBuffer = ExtractedProjectile;
+impl InstancedMaterial for StandardParticle {
+    type InstanceBuffer = DefaultInstanceBuffer;
 
     fn vertex_shader() -> ShaderRef {
         ShaderRef::Handle(PARTICLE_VERTEX.clone())
@@ -103,17 +104,18 @@ impl ProjectileMaterial for StandardProjectile {
     }
 }
 
+/// Extended version of a base [`InstancedMaterial`] using [`InstancedMaterialExtension`].
 #[derive(Debug, Clone, Default, TypePath, Asset)]
-pub struct ExtendedProjectileMat<
-    B: ProjectileMaterial,
-    E: ProjectileMaterialExtension<InstanceBuffer = B::InstanceBuffer>,
+pub struct ExtendedInstancedMaterial<
+    B: InstancedMaterial,
+    E: InstancedMaterialExtension<InstanceBuffer = B::InstanceBuffer>,
 > {
     pub base: B,
     pub extension: E,
 }
 
-impl<B: ProjectileMaterial, E: ProjectileMaterialExtension<InstanceBuffer = B::InstanceBuffer>>
-    ProjectileMaterial for ExtendedProjectileMat<B, E>
+impl<B: InstancedMaterial, E: InstancedMaterialExtension<InstanceBuffer = B::InstanceBuffer>>
+    InstancedMaterial for ExtendedInstancedMaterial<B, E>
 {
     type InstanceBuffer = B::InstanceBuffer;
 
@@ -142,8 +144,8 @@ impl<B: ProjectileMaterial, E: ProjectileMaterialExtension<InstanceBuffer = B::I
     }
 }
 
-impl<B: ProjectileMaterial, E: ProjectileMaterialExtension<InstanceBuffer = B::InstanceBuffer>>
-    AsBindGroup for ExtendedProjectileMat<B, E>
+impl<B: InstancedMaterial, E: InstancedMaterialExtension<InstanceBuffer = B::InstanceBuffer>>
+    AsBindGroup for ExtendedInstancedMaterial<B, E>
 {
     type Data = (<B as AsBindGroup>::Data, <E as AsBindGroup>::Data);
     type Param = (<B as AsBindGroup>::Param, <E as AsBindGroup>::Param);

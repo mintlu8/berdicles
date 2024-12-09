@@ -8,7 +8,8 @@ use bevy::{
         query::QueryItem,
     },
     prelude::{
-        AlphaMode, Commands, Component, Entity, GlobalTransform, Query, Res, Resource, World,
+        AlphaMode, Commands, Component, Deref, DerefMut, Entity, GlobalTransform, Query, Res,
+        Resource, World,
     },
     render::{
         extract_component::ExtractComponent,
@@ -21,12 +22,12 @@ use bevy::{
 };
 
 use crate::{
-    pipeline::ParticleInstanceBuffer, ExtractedParticleBuffer, ExtractedProjectile, Particle,
-    ParticleBuffer, ParticleSystem, ProjectileCluster, ProjectileMat, ProjectileMaterial,
+    pipeline::InstanceBuffer, DefaultInstanceBuffer, ExtractedParticleBuffer, InstancedMaterial,
+    InstancedMaterial3d, ParticleBuffer, ParticleSystem, Projectile, ProjectileCluster,
 };
 
 #[derive(Resource)]
-pub struct ExtractedProjectileMeta<M: ProjectileMaterial> {
+pub struct ExtractedProjectileMeta<M: InstancedMaterial> {
     pub(crate) alpha_modes: HashMap<AssetId<M>, AlphaMode>,
     pub(crate) entity_material: HashMap<MainEntity, AssetId<M>>,
 }
@@ -35,8 +36,11 @@ pub struct ExtractedProjectileMeta<M: ProjectileMaterial> {
 pub struct ExtractedProjectileBuffers {
     pub(crate) extracted_buffers: HashMap<MainEntity, ExtractedParticleBuffer>,
     pub(crate) particle_ref: HashMap<MainEntity, MainEntity>,
-    pub(crate) compiled_buffers: HashMap<MainEntity, ParticleInstanceBuffer>,
+    pub(crate) compiled_buffers: HashMap<MainEntity, InstanceBuffer>,
 }
+
+#[derive(Resource, Default, Deref, DerefMut)]
+pub struct ExtractedTransforms(HashMap<MainEntity, GlobalTransform>);
 
 impl ExtractedProjectileBuffers {
     pub fn entities(&self) -> impl Iterator<Item = &MainEntity> {
@@ -49,11 +53,11 @@ impl ExtractedProjectileBuffers {
 
 #[derive(Resource, Default)]
 pub struct PreparedInstanceBuffers {
-    pub(crate) buffers: HashMap<MainEntity, ParticleInstanceBuffer>,
+    pub(crate) buffers: HashMap<MainEntity, InstanceBuffer>,
 }
 
-impl<M: ProjectileMaterial> ExtractedProjectileMeta<M> {
-    fn get_alpha(&self, entity: &MainEntity) -> Option<AlphaMode> {
+impl<M: InstancedMaterial> ExtractedProjectileMeta<M> {
+    pub fn get_alpha(&self, entity: &MainEntity) -> Option<AlphaMode> {
         self.entity_material
             .get(entity)
             .and_then(|x| self.alpha_modes.get(x))
@@ -62,32 +66,24 @@ impl<M: ProjectileMaterial> ExtractedProjectileMeta<M> {
 }
 
 pub(crate) fn extract_buffers(
-    buffers: Extract<
-        Query<(
-            Entity,
-            &ProjectileCluster,
-            &ParticleBuffer,
-            &GlobalTransform,
-        )>,
-    >,
+    buffers: Extract<Query<(Entity, &ProjectileCluster, &ParticleBuffer)>>,
     references: Extract<Query<(Entity, &ProjectileRef)>>,
-    one_shot: Extract<Query<(Entity, &OneShotParticleBuffer)>>,
+    one_shot: Extract<Query<(Entity, &CompiledHairBuffer)>>,
+    transforms: Extract<Query<(Entity, &GlobalTransform)>>,
     mut commands: Commands,
 ) {
-    commands.insert_resource(ExtractedProjectileBuffers {
+    let buffers = ExtractedProjectileBuffers {
         extracted_buffers: buffers
             .iter()
-            .filter_map(|(entity, system, buffer, transform)| {
+            .filter_map(|(entity, system, buffer)| {
                 if buffer.is_uninit() {
                     return None;
                 }
+                let entity = MainEntity::from(entity);
                 let mut lock = buffer.extracted_allocation.lock().unwrap();
                 if let Some(vec) = Arc::get_mut(&mut lock) {
-                    system.extract(buffer, transform, None, vec);
-                    Some((
-                        MainEntity::from(entity),
-                        ExtractedParticleBuffer(lock.clone()),
-                    ))
+                    system.extract(buffer, vec);
+                    Some((entity, ExtractedParticleBuffer(lock.clone())))
                 } else {
                     None
                 }
@@ -101,7 +97,16 @@ pub(crate) fn extract_buffers(
             .iter()
             .map(|(entity, buffer)| (MainEntity::from(entity), buffer.0.clone()))
             .collect(),
-    });
+    };
+
+    commands.insert_resource(ExtractedTransforms(
+        transforms
+            .iter_many(buffers.entities().map(|x| x.id()))
+            .map(|(entity, transform)| (MainEntity::from(entity), *transform))
+            .collect(),
+    ));
+
+    commands.insert_resource(buffers);
 }
 
 // Since we are relying on `Arc::get_mut` this is needed to remove duplicated references.
@@ -109,9 +114,9 @@ pub(crate) fn extract_clean(world: &mut World) {
     world.remove_resource::<ExtractedProjectileBuffers>();
 }
 
-pub(crate) fn extract_meta<M: ProjectileMaterial>(
+pub(crate) fn extract_meta<M: InstancedMaterial>(
     materials: Extract<Res<Assets<M>>>,
-    query: Extract<Query<(Entity, &ProjectileMat<M>)>>,
+    query: Extract<Query<(Entity, &InstancedMaterial3d<M>)>>,
     mut commands: Commands,
 ) {
     commands.insert_resource(ExtractedProjectileMeta {
@@ -154,9 +159,9 @@ impl From<Entity> for ProjectileRef {
 }
 
 /// A [`ParticleSystem`] that spawns once and maintains a GPU side instance buffer [`OneShotParticleBuffer`], i.e. grass.
-pub struct OneShotParticleInstance(Vec<ExtractedProjectile>);
+pub struct HairParticles(Vec<DefaultInstanceBuffer>);
 
-impl OneShotParticleInstance {
+impl HairParticles {
     pub fn new<P: ParticleSystem>(mut particles: P) -> Self {
         let count = particles.spawn_step(0.);
         let mut buf = Vec::with_capacity(count);
@@ -164,7 +169,7 @@ impl OneShotParticleInstance {
             let seed = particles.rng();
             let particle = particles.build_particle(seed);
             let mat = particle.get_transform().compute_matrix();
-            buf.push(ExtractedProjectile {
+            buf.push(DefaultInstanceBuffer {
                 index: particle.get_index(),
                 lifetime: particle.get_lifetime(),
                 fac: particle.get_fac(),
@@ -179,13 +184,13 @@ impl OneShotParticleInstance {
     }
 }
 
-impl Component for OneShotParticleInstance {
+impl Component for HairParticles {
     const STORAGE_TYPE: StorageType = StorageType::Table;
 
     fn register_component_hooks(hooks: &mut ComponentHooks) {
         hooks.on_insert(|mut world, entity, _| {
             let render_device = world.resource::<RenderDevice>();
-            let Some(item) = world.entity(entity).get::<OneShotParticleInstance>() else {
+            let Some(item) = world.entity(entity).get::<HairParticles>() else {
                 return;
             };
             let buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
@@ -197,20 +202,12 @@ impl Component for OneShotParticleInstance {
             world
                 .commands()
                 .entity(entity)
-                .insert(OneShotParticleBuffer(ParticleInstanceBuffer {
-                    buffer,
-                    length,
-                }))
-                .remove::<OneShotParticleInstance>();
+                .insert(CompiledHairBuffer(InstanceBuffer { buffer, length }))
+                .remove::<HairParticles>();
         });
     }
 }
 
-/// Handle for a spawned GPU side particle instance buffer.
+/// Handle for a spawned GPU side instance buffer.
 #[derive(Component)]
-pub struct OneShotParticleBuffer(ParticleInstanceBuffer);
-
-/// Marker for [`OneShotParticleBuffer`] to use the correct render pipeline.
-#[doc(hidden)]
-#[derive(Component)]
-pub struct OneShotParticleMarker;
+pub struct CompiledHairBuffer(InstanceBuffer);

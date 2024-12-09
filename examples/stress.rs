@@ -4,8 +4,8 @@ mod util;
 
 use berdicles::{
     util::{random_sphere, transform_from_derivative},
-    ExpirationState, Particle, ParticleSystem, ProjectileCluster, ProjectileMat, ProjectilePlugin,
-    StandardProjectile,
+    DefaultInstanceBuffer, ExpirationState, InstancedMaterial3d, ParticleSystem, Projectile,
+    ProjectileCluster, ProjectilePlugin, StandardParticle,
 };
 use bevy::{prelude::*, window::PresentMode};
 use std::f32::consts::PI;
@@ -36,7 +36,9 @@ pub struct MyParticle {
     pub life_time: f32,
 }
 
-impl Particle for MyParticle {
+impl Projectile for MyParticle {
+    type Extracted = DefaultInstanceBuffer;
+
     fn get_seed(&self) -> f32 {
         self.seed
     }
@@ -70,7 +72,7 @@ impl Particle for MyParticle {
 pub struct MySpawner(f32);
 
 impl ParticleSystem for MySpawner {
-    type Particle = MyParticle;
+    type Projectile = MyParticle;
 
     fn capacity(&self) -> usize {
         100000
@@ -83,7 +85,7 @@ impl ParticleSystem for MySpawner {
         result
     }
 
-    fn build_particle(&self, seed: f32) -> Self::Particle {
+    fn build_particle(&self, seed: f32) -> Self::Projectile {
         MyParticle {
             seed,
             life_time: 0.,
@@ -95,7 +97,7 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
-    mut materials2: ResMut<Assets<StandardProjectile>>,
+    mut materials2: ResMut<Assets<StandardParticle>>,
 ) {
     commands
         .spawn((
@@ -112,7 +114,7 @@ fn setup(
                     .rotated_by(Quat::from_rotation_x(-PI / 2.0)),
                 ),
             ),
-            ProjectileMat(materials2.add(StandardProjectile {
+            InstancedMaterial3d(materials2.add(StandardParticle {
                 base_color: LinearRgba::new(2., 2., 2., 1.),
                 texture: images.add(uv_debug_texture()),
                 alpha_mode: AlphaMode::Opaque,

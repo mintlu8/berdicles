@@ -5,7 +5,7 @@ use bevy::{
 use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 
-use crate::{ErasedParticleSystem, ExpirationState, Particle, ParticleBuffer, ParticleSystem};
+use crate::{ErasedParticleSystem, ExpirationState, ParticleBuffer, ParticleSystem, Projectile};
 
 /// Event on individual particle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,7 +74,7 @@ impl DerefMut for ParticleEventBuffer {
 /// A [`ParticleSystem`] that spawns particles from a parent
 /// `ParticleSystem`'s alive particles.
 pub trait SubParticleSystem: ParticleSystem {
-    type Parent: Particle;
+    type Parent: Projectile;
 
     /// Determines how many particles to spawn in a frame **per particle**.
     ///
@@ -82,7 +82,7 @@ pub trait SubParticleSystem: ParticleSystem {
     fn spawn_step_sub(&mut self, parent: &mut Self::Parent, dt: f32) -> usize;
 
     /// Convert a random seed into a particle with parent information.
-    fn into_sub_particle(parent: &Self::Parent, seed: f32) -> Self::Particle;
+    fn into_sub_particle(parent: &Self::Parent, seed: f32) -> Self::Projectile;
 }
 
 /// An erased [`SubParticleSystem`].
@@ -133,7 +133,7 @@ pub trait EventParticleSystem: ParticleSystem {
     fn spawn_on_event(&mut self, parent: &ParticleEvent) -> usize;
 
     /// Convert a random seed into a particle with parent information.
-    fn into_sub_particle(parent: &ParticleEvent, seed: f32) -> Self::Particle;
+    fn into_sub_particle(parent: &ParticleEvent, seed: f32) -> Self::Projectile;
 }
 
 /// Type erased [`EventParticleSystem`].

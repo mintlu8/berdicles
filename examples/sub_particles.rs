@@ -2,10 +2,10 @@
 mod util;
 use berdicles::{
     util::{random_circle, transform_from_derivative},
-    ErasedEventParticleSystem, ErasedSubParticleSystem, EventParticleSystem, ExpirationState,
-    Particle, ParticleEvent, ParticleEventBuffer, ParticleEventType, ParticleSystem,
-    ProjectileCluster, ProjectileMat, ProjectileParent, ProjectilePlugin, StandardProjectile,
-    SubParticleSystem,
+    DefaultInstanceBuffer, ErasedEventParticleSystem, ErasedSubParticleSystem, EventParticleSystem,
+    ExpirationState, InstancedMaterial3d, ParticleEvent, ParticleEventBuffer, ParticleEventType,
+    ParticleSystem, Projectile, ProjectileCluster, ProjectileParent, ProjectilePlugin,
+    StandardParticle, SubParticleSystem,
 };
 use bevy::{prelude::*, window::PresentMode};
 use std::f32::consts::PI;
@@ -41,7 +41,9 @@ pub struct MainParticle {
     pub meta: f32,
 }
 
-impl Particle for MainParticle {
+impl Projectile for MainParticle {
+    type Extracted = DefaultInstanceBuffer;
+
     fn get_seed(&self) -> f32 {
         self.seed
     }
@@ -79,7 +81,7 @@ impl Particle for MainParticle {
 pub struct MainSpawner(f32);
 
 impl ParticleSystem for MainSpawner {
-    type Particle = MainParticle;
+    type Projectile = MainParticle;
 
     fn capacity(&self) -> usize {
         60
@@ -92,7 +94,7 @@ impl ParticleSystem for MainSpawner {
         result
     }
 
-    fn build_particle(&self, seed: f32) -> Self::Particle {
+    fn build_particle(&self, seed: f32) -> Self::Projectile {
         MainParticle {
             seed,
             life_time: 0.,
@@ -108,7 +110,9 @@ pub struct TrailParticle {
     pub life_time: f32,
 }
 
-impl Particle for TrailParticle {
+impl Projectile for TrailParticle {
+    type Extracted = DefaultInstanceBuffer;
+
     fn get_seed(&self) -> f32 {
         self.seed
     }
@@ -144,7 +148,7 @@ impl Particle for TrailParticle {
 pub struct ChildSpawner(f32);
 
 impl ParticleSystem for ChildSpawner {
-    type Particle = TrailParticle;
+    type Projectile = TrailParticle;
 
     fn capacity(&self) -> usize {
         100000
@@ -154,7 +158,7 @@ impl ParticleSystem for ChildSpawner {
         0
     }
 
-    fn build_particle(&self, _: f32) -> Self::Particle {
+    fn build_particle(&self, _: f32) -> Self::Projectile {
         unreachable!()
     }
 
@@ -173,7 +177,7 @@ impl SubParticleSystem for ChildSpawner {
         result
     }
 
-    fn into_sub_particle(parent: &Self::Parent, seed: f32) -> Self::Particle {
+    fn into_sub_particle(parent: &Self::Parent, seed: f32) -> Self::Projectile {
         TrailParticle {
             origin: parent
                 .get_transform()
@@ -191,7 +195,9 @@ pub struct CollisionParticle {
     pub life_time: f32,
 }
 
-impl Particle for CollisionParticle {
+impl Projectile for CollisionParticle {
+    type Extracted = DefaultInstanceBuffer;
+
     fn get_seed(&self) -> f32 {
         self.seed
     }
@@ -224,7 +230,7 @@ impl Particle for CollisionParticle {
 pub struct CollisionSpawner;
 
 impl ParticleSystem for CollisionSpawner {
-    type Particle = CollisionParticle;
+    type Projectile = CollisionParticle;
 
     fn capacity(&self) -> usize {
         100000
@@ -234,7 +240,7 @@ impl ParticleSystem for CollisionSpawner {
         0
     }
 
-    fn build_particle(&self, _: f32) -> Self::Particle {
+    fn build_particle(&self, _: f32) -> Self::Projectile {
         unreachable!()
     }
 
@@ -251,7 +257,7 @@ impl EventParticleSystem for CollisionSpawner {
         }
     }
 
-    fn into_sub_particle(parent: &ParticleEvent, seed: f32) -> Self::Particle {
+    fn into_sub_particle(parent: &ParticleEvent, seed: f32) -> Self::Projectile {
         CollisionParticle {
             origin: parent.position,
             seed,
@@ -265,7 +271,7 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut materials2: ResMut<Assets<StandardProjectile>>,
+    mut materials2: ResMut<Assets<StandardParticle>>,
 ) {
     let root = commands
         .spawn((
@@ -282,7 +288,7 @@ fn setup(
                     .rotated_by(Quat::from_rotation_x(-PI / 2.0)),
                 ),
             ),
-            ProjectileMat(materials2.add(StandardProjectile {
+            InstancedMaterial3d(materials2.add(StandardParticle {
                 base_color: LinearRgba::new(2., 2., 2., 1.),
                 texture: images.add(uv_debug_texture()),
                 alpha_mode: AlphaMode::Opaque,
@@ -295,7 +301,7 @@ fn setup(
     commands.spawn((
         ProjectileCluster::new(ChildSpawner(0.)),
         Mesh3d(meshes.add(Sphere::new(0.1).mesh())),
-        ProjectileMat(materials2.add(StandardProjectile {
+        InstancedMaterial3d(materials2.add(StandardParticle {
             base_color: LinearRgba::new(0., 2., 2., 1.),
             texture: images.add(uv_debug_texture()),
             alpha_mode: AlphaMode::Opaque,
@@ -307,7 +313,7 @@ fn setup(
     commands.spawn((
         ProjectileCluster::new(CollisionSpawner),
         Mesh3d(meshes.add(Cuboid::new(0.2, 0.2, 0.2).mesh())),
-        ProjectileMat(materials2.add(StandardProjectile {
+        InstancedMaterial3d(materials2.add(StandardParticle {
             base_color: LinearRgba::new(2., 0., 0., 1.),
             texture: images.add(uv_debug_texture()),
             alpha_mode: AlphaMode::Opaque,

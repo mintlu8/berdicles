@@ -32,7 +32,6 @@ fn main() {
         .add_plugins(FPSPlugin)
         .add_plugins(ProjectilePlugin)
         .add_systems(Startup, setup)
-        .add_systems(Update, spin)
         .run();
 }
 
@@ -44,35 +43,21 @@ struct Shape;
 pub struct MainParticle {
     pub seed: f32,
     pub life_time: f32,
-    pub meta: f32,
     pub trail: ExpDecayTrail<16>,
 }
 
 impl Projectile for MainParticle {
     type Extracted = DefaultInstanceBuffer;
 
-    fn get_seed(&self) -> f32 {
-        self.seed
-    }
-
-    fn get_lifetime(&self) -> f32 {
-        self.life_time
-    }
-
     fn get_transform(&self) -> Transform {
-        let f = |t| {
-            let z = t * 8. - t * t;
-            let xy: Vec2 = Vec2::from_angle(self.seed * PI * 4.) * t;
-            Vec3::new(xy.x, z, xy.y)
+        let f = |t: f32| {
+            let front = Vec2::from_angle(self.seed * PI * 4.);
+            let front = Vec3::new(front.x, 0., front.y);
+            let tangent = front.cross(Vec3::Y);
+            let angle = t * 12.;
+            front * t * 10. + tangent * angle.cos() + Vec3::Y * angle.sin()
         };
         transform_from_derivative(f, self.life_time)
-    }
-
-    fn get_position(&self) -> Vec3 {
-        let t = self.life_time;
-        let z = t * 8. - t * t;
-        let xy: Vec2 = Vec2::from_angle(self.seed * PI * 4.) * t;
-        Vec3::new(xy.x, z, xy.y)
     }
 
     fn get_color(&self) -> Srgba {
@@ -125,9 +110,9 @@ impl ParticleSystem for MainSpawner {
         MainParticle {
             seed,
             life_time: 0.,
-            meta: 0.,
             trail: ExpDecayTrail {
                 width_curve: WidthCurve::Fac(|x| (1. - x * x / 2.) * 0.25),
+                eps: 0.5,
                 ..Default::default()
             },
         }
@@ -150,25 +135,17 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
+    server: Res<AssetServer>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut materials2: ResMut<Assets<StandardParticle>>,
     mut materials3: ResMut<Assets<TrailMaterial>>,
 ) {
+    let mut mesh = Mesh::from(Sphere { radius: 0.2 }.mesh());
+    let _ = mesh.generate_tangents();
     let root = commands
         .spawn((
             ProjectileCluster::new(MainSpawner(0.)),
-            Mesh3d(
-                meshes.add(
-                    Mesh::from(
-                        Cone {
-                            radius: 0.5,
-                            height: 0.5,
-                        }
-                        .mesh(),
-                    )
-                    .rotated_by(Quat::from_rotation_x(-PI / 2.0)),
-                ),
-            ),
+            Mesh3d(meshes.add(mesh)),
             InstancedMaterial3d(materials2.add(StandardParticle {
                 base_color: LinearRgba::new(2., 2., 2., 1.),
                 texture: images.add(uv_debug_texture()),
@@ -182,7 +159,8 @@ fn setup(
         MeshMaterial3d(materials3.add(TrailMaterial {
             base: StandardMaterial {
                 base_color: Color::srgba(0., 1., 1., 1.),
-                base_color_texture: Some(images.add(uv_debug_texture())),
+                base_color_texture: Some(server.load("lightning.png")),
+                alpha_mode: AlphaMode::Blend,
                 cull_mode: None,
                 double_sided: true,
                 unlit: true,
@@ -208,19 +186,13 @@ fn setup(
 
     // ground plane
     commands.spawn((
-        Mesh3d(meshes.add(Plane3d::default().mesh().size(50.0, 50.0).subdivisions(10))),
+        Mesh3d(meshes.add(Plane3d::default().mesh().size(100.0, 100.0).subdivisions(5))),
         MeshMaterial3d(materials.add(StandardMaterial::from_color(Srgba::GREEN))),
-        Transform::from_xyz(0., 0., 0.),
+        Transform::from_xyz(0., -10., 0.),
     ));
 
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(0.0, 14., 40.0).looking_at(Vec3::new(0., 0., 0.), Vec3::Y),
+        Transform::from_xyz(7.0, 30., 7.0).looking_at(Vec3::new(0., 0., 0.), Vec3::Y),
     ));
-}
-
-fn spin(time: Res<Time<Virtual>>, mut query: Query<&mut Transform, With<Camera>>) {
-    if let Ok(mut transform) = query.get_single_mut() {
-        transform.rotate_around(Vec3::ZERO, Quat::from_rotation_y(time.delta_secs() / 4.))
-    }
 }

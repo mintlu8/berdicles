@@ -9,9 +9,9 @@
 use std::f32::consts::PI;
 
 use berdicles::{
-    util::into_rng, ExpirationState, ExtendedProjectileMat, ExtractedProjectile,
-    OneShotParticleInstance, Particle, ParticleSystem, ProjectileMat, ProjectileMaterialExtension,
-    ProjectileMaterialPlugin, ProjectilePlugin, StandardProjectile,
+    util::into_rng, DefaultInstanceBuffer, ExpirationState, ExtendedInstancedMaterial,
+    HairParticles, InstancedMaterial3d, InstancedMaterialExtension, InstancedMaterialPlugin,
+    ParticleSystem, Projectile, ProjectilePlugin, StandardParticle,
 };
 use bevy::{
     prelude::*,
@@ -57,8 +57,8 @@ struct GrassMat {
     pub wind: Vec2,
 }
 
-impl ProjectileMaterialExtension for GrassMat {
-    type InstanceBuffer = ExtractedProjectile;
+impl InstancedMaterialExtension for GrassMat {
+    type InstanceBuffer = DefaultInstanceBuffer;
     fn vertex_shader() -> ShaderRef {
         ShaderRef::Handle(GRASS_SHADER.clone())
     }
@@ -83,8 +83,8 @@ fn main() {
                     ..Default::default()
                 }),
         )
-        .add_plugins(ProjectileMaterialPlugin::<
-            ExtendedProjectileMat<StandardProjectile, GrassMat>,
+        .add_plugins(InstancedMaterialPlugin::<
+            ExtendedInstancedMaterial<StandardParticle, GrassMat>,
         >::new())
         .add_plugins(|a: &mut App| {
             a.world_mut()
@@ -107,7 +107,9 @@ pub struct MyParticle {
     pub seed: f32,
 }
 
-impl Particle for MyParticle {
+impl Projectile for MyParticle {
+    type Extracted = DefaultInstanceBuffer;
+
     fn get_seed(&self) -> f32 {
         self.seed
     }
@@ -136,7 +138,7 @@ impl Particle for MyParticle {
 pub struct MySpawner;
 
 impl ParticleSystem for MySpawner {
-    type Particle = MyParticle;
+    type Projectile = MyParticle;
 
     /// Doesn't matter.
     fn capacity(&self) -> usize {
@@ -147,7 +149,7 @@ impl ParticleSystem for MySpawner {
         80000
     }
 
-    fn build_particle(&self, seed: f32) -> Self::Particle {
+    fn build_particle(&self, seed: f32) -> Self::Projectile {
         MyParticle { seed }
     }
 }
@@ -155,7 +157,7 @@ impl ParticleSystem for MySpawner {
 fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut mats: ResMut<Assets<ExtendedProjectileMat<StandardProjectile, GrassMat>>>,
+    mut mats: ResMut<Assets<ExtendedInstancedMaterial<StandardParticle, GrassMat>>>,
     server: Res<AssetServer>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
@@ -167,8 +169,8 @@ fn setup(
                     .subdivisions(1),
             )),
         ),
-        ProjectileMat(mats.add(ExtendedProjectileMat {
-            base: StandardProjectile {
+        InstancedMaterial3d(mats.add(ExtendedInstancedMaterial {
+            base: StandardParticle {
                 base_color: LinearRgba::WHITE,
                 texture: server.load("grass.png"),
                 alpha_mode: AlphaMode::Blend,
@@ -178,7 +180,7 @@ fn setup(
                 wind: Vec2::new(1., 1.),
             },
         })),
-        OneShotParticleInstance::new(MySpawner),
+        HairParticles::new(MySpawner),
     ));
 
     commands.spawn((
@@ -208,7 +210,7 @@ fn setup(
 fn update(
     noise: Res<Noises>,
     time: Res<Time>,
-    mut mats: ResMut<Assets<ExtendedProjectileMat<StandardProjectile, GrassMat>>>,
+    mut mats: ResMut<Assets<ExtendedInstancedMaterial<StandardParticle, GrassMat>>>,
 ) {
     for mat in mats.iter_mut() {
         mat.1.extension.wind = Vec2::new(

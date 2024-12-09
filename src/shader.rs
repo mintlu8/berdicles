@@ -19,3 +19,4 @@ const fn weak_from_str(s: &str) -> Handle<Shader> {
 pub static PARTICLE_VERTEX: Handle<Shader> = weak_from_str("berdicle/vert");
 pub static PARTICLE_FRAGMENT: Handle<Shader> = weak_from_str("berdicle/frag");
 pub static PARTICLE_DBG_FRAGMENT: Handle<Shader> = weak_from_str("berdicle/dbg");
+pub static TRAIL_VERTEX: Handle<Shader> = weak_from_str("berdicle/trail");

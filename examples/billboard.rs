@@ -2,8 +2,8 @@
 
 use berdicles::{
     util::{random_cone, random_quat},
-    ExpirationState, Particle, ParticleSystem, ProjectileCluster, ProjectileMat, ProjectilePlugin,
-    StandardProjectile,
+    DefaultInstanceBuffer, ExpirationState, InstancedMaterial3d, ParticleSystem, Projectile,
+    ProjectileCluster, ProjectilePlugin, StandardParticle,
 };
 use bevy::{prelude::*, window::PresentMode};
 use util::{uv_debug_texture, FPSPlugin};
@@ -34,7 +34,9 @@ pub struct MyParticle {
     pub life_time: f32,
 }
 
-impl Particle for MyParticle {
+impl Projectile for MyParticle {
+    type Extracted = DefaultInstanceBuffer;
+
     fn get_seed(&self) -> f32 {
         self.seed
     }
@@ -74,7 +76,7 @@ impl Particle for MyParticle {
 pub struct MySpawner(f32);
 
 impl ParticleSystem for MySpawner {
-    type Particle = MyParticle;
+    type Projectile = MyParticle;
 
     fn capacity(&self) -> usize {
         10000
@@ -87,7 +89,7 @@ impl ParticleSystem for MySpawner {
         result
     }
 
-    fn build_particle(&self, seed: f32) -> Self::Particle {
+    fn build_particle(&self, seed: f32) -> Self::Projectile {
         MyParticle {
             seed,
             life_time: 0.,
@@ -102,7 +104,7 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut materials2: ResMut<Assets<StandardProjectile>>,
+    mut materials2: ResMut<Assets<StandardParticle>>,
 ) {
     let mesh_handle = meshes.add(Mesh::from(
         Plane3d {
@@ -114,7 +116,7 @@ fn setup(
     commands.spawn((
         ProjectileCluster::new(MySpawner(0.)),
         Mesh3d(mesh_handle.clone()),
-        ProjectileMat(materials2.add(StandardProjectile {
+        InstancedMaterial3d(materials2.add(StandardParticle {
             base_color: LinearRgba::new(2., 0., 0., 1.),
             texture: images.add(uv_debug_texture()),
             alpha_mode: AlphaMode::Opaque,
@@ -127,7 +129,7 @@ fn setup(
     commands.spawn((
         ProjectileCluster::new(MySpawner(0.)),
         Mesh3d(mesh_handle.clone()),
-        ProjectileMat(materials2.add(StandardProjectile {
+        InstancedMaterial3d(materials2.add(StandardParticle {
             base_color: LinearRgba::new(0., 0., 2., 1.),
             texture: images.add(uv_debug_texture()),
             alpha_mode: AlphaMode::Opaque,

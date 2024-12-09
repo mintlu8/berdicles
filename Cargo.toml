@@ -15,6 +15,7 @@ keywords = ["bevy", "particle", "particles"]
 
 [dependencies]
 bevy = { version = "0.15.0", default-features = false, features = ["bevy_pbr"] }
+bevy_image = { version = "0.15.0" }
 bytemuck = "1.16.1"
 fastrand = "2.1.0"
 
