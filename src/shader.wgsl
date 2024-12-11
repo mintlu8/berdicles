@@ -29,13 +29,13 @@ struct Vertex {
     @location(4) tangent: vec4<f32>,
 #endif
 #ifdef VERTEX_COLORS
-    @location(5) color: vec4<f32>,
+    @location(5) vertex_color: vec4<f32>,
 #endif
 
     @location(10) id: u32,
     @location(11) lifetime: f32,
-    @location(12) fac: f32,
-    @location(13) seed: f32,
+    @location(12) seed: f32,
+    @location(13) fac: f32,
 
     @location(14) transform_x: vec4<f32>,
     @location(15) transform_y: vec4<f32>,
@@ -56,7 +56,7 @@ struct VertexOutput {
     @location(6) normal: vec3<f32>,
 #endif
 #ifdef VERTEX_COLORS
-    @location(7) color: vec4<f32>,
+    @location(7) vertex_color: vec4<f32>,
 #endif
 };
 
@@ -98,7 +98,12 @@ fn vertex(vertex: Vertex) -> VertexOutput {
         dot(vec4(transform, 1.0), local_to_world_z),
     );
     let position = position_world_to_view(world_position);
-    out.clip_position = position_view_to_clip(position + vertex.position);
+    let vertex_position = vec3(
+        dot(vec2(vertex.position.xy), vertex.transform_x.xy),
+        dot(vec2(vertex.position.xy), vertex.transform_y.xy),
+        vertex.position.z
+    );
+    out.clip_position = position_view_to_clip(position + vertex_position);
 #ifdef VERTEX_NORMALS
     // The intension is 2d object, so don't change the normal
     out.normal = vertex.normal;
@@ -109,6 +114,9 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     out.fac = vertex.fac;
     out.seed = vertex.seed;
     out.color = vertex.color;
+#ifdef VERTEX_COLORS
+    out.vertex_color = vertex.vertex_color;
+#endif
     out.uv = vertex.uv;
     return out;
 }
@@ -118,7 +126,7 @@ fn fragment(input: VertexOutput) -> @location(0) vec4<f32> {
     let sampled = textureSample(texture, texture_sampler, input.uv);
     return input.color * color * sampled
 #ifdef VERTEX_COLORS
-        * input.color
+        * input.vertex_color
 #endif
     ;
 }

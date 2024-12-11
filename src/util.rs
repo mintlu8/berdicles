@@ -2,7 +2,7 @@
 
 use std::{
     f32::consts::PI,
-    ops::{AddAssign, Mul},
+    ops::{Add, AddAssign, Div, Mul, Range, Sub},
 };
 
 use bevy::{
@@ -78,10 +78,27 @@ pub fn random_quat(seed: f32) -> Quat {
 /// Apply acceleration to a physics based projectile.
 pub fn acceleration<T: AddAssign<T> + Mul<f32, Output = T> + Copy>(
     acceleration: T,
-    speed: &mut T,
+    velocity: &mut T,
     position: &mut T,
     dt: f32,
 ) {
-    *speed += acceleration * dt;
-    *position += *speed * dt;
+    *velocity += acceleration * dt;
+    *position += *velocity * dt;
+}
+
+/// Spawn particle at a specified rate.
+pub fn spawn_rate(meta: &mut f32, times_per_second: f32, dt: f32) -> usize {
+    *meta += times_per_second * dt;
+    let result = meta.floor();
+    *meta = meta.fract();
+    result as usize
+}
+
+/// Calculate a factor in range `from` and apply to range `to`.
+pub fn map_range<A, B>(value: A, from: Range<A>, to: Range<B>) -> B
+where
+    A: Copy + Sub<A, Output = A> + Div<A, Output = A> + Mul<B, Output = B>,
+    B: Copy + Add<B, Output = B> + Sub<B, Output = B>,
+{
+    (value - from.start) / (from.end - from.start) * (to.end - to.start) + to.start
 }

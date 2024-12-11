@@ -161,11 +161,14 @@ fn setup(
 ) {
     commands.spawn((
         Mesh3d(
-            meshes.add(Mesh::from(
-                Plane3d::new(Vec3::Z, Vec2::splat(0.4))
-                    .mesh()
-                    .subdivisions(1),
-            ).with_computed_normals()),
+            meshes.add(
+                Mesh::from(
+                    Plane3d::new(Vec3::Z, Vec2::splat(0.4))
+                        .mesh()
+                        .subdivisions(1),
+                )
+                .with_computed_normals(),
+            ),
         ),
         InstancedMaterial3d(mats.add(ExtendedInstancedMaterial {
             base: StandardParticle {

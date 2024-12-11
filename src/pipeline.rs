@@ -23,7 +23,7 @@ use bevy::{
         render_resource::*,
         renderer::RenderDevice,
         sync_world::MainEntity,
-        view::ExtractedView,
+        view::{ExtractedView, RenderLayers},
         Render, RenderApp, RenderSet,
     },
     utils::HashMap,
@@ -33,8 +33,8 @@ use bitflags::bitflags;
 use crate::{
     extract_meta,
     shader::{PARTICLE_FRAGMENT, PARTICLE_VERTEX},
-    ExtractedProjectileBuffers, ExtractedProjectileMeta, ExtractedTransforms, InstancedMaterial,
-    PreparedInstanceBuffers, ProjectileInstanceBuffer,
+    ExtractedProjectileBuffers, ExtractedProjectileMeta, ExtractedRenderLayers,
+    ExtractedTransforms, InstancedMaterial, PreparedInstanceBuffers, ProjectileInstanceBuffer,
 };
 
 /// Add particle rendering pipeline for an [`InstancedMaterial`].
@@ -109,9 +109,10 @@ fn queue_particles<M: InstancedMaterial>(
     render_mesh_instances: Res<RenderMeshInstances>,
     extracted_meta: Res<ExtractedProjectileMeta<M>>,
     material_meshes: Res<ExtractedProjectileBuffers>,
+    extracted_layers: Res<ExtractedRenderLayers>,
     mut opaque_render_phases: ResMut<ViewBinnedRenderPhases<Opaque3d>>,
     mut transparent_render_phases: ResMut<ViewSortedRenderPhases<Transparent3d>>,
-    mut views: Query<(Entity, &ExtractedView, &Msaa)>,
+    mut views: Query<(Entity, &ExtractedView, &Msaa, Option<&RenderLayers>)>,
 ) {
     let draw_opaque = opaque_3d_draw_functions.read().id::<RenderParticles<M>>();
 
@@ -119,8 +120,10 @@ fn queue_particles<M: InstancedMaterial>(
         .read()
         .id::<RenderParticles<M>>();
 
-    for (view_entity, view, msaa) in &mut views {
+    for (view_entity, view, msaa, view_layers) in &mut views {
         let msaa_key = MeshPipelineKey::from_msaa_samples(msaa.samples());
+
+        let view_layers = view_layers.unwrap_or_default();
 
         let Some(opaque_phase) = opaque_render_phases.get_mut(&view_entity) else {
             continue;
@@ -133,6 +136,10 @@ fn queue_particles<M: InstancedMaterial>(
         let view_key = msaa_key | MeshPipelineKey::from_hdr(view.hdr);
         let rangefinder = view.rangefinder3d();
         for entity in material_meshes.entities() {
+            let layers = extracted_layers.get(entity).unwrap_or_default();
+            if !layers.intersects(view_layers) {
+                continue;
+            }
             let Some(mesh_instance) = render_mesh_instances.render_mesh_queue_data(*entity) else {
                 continue;
             };

@@ -119,6 +119,10 @@ pub struct StandardParticle {
     pub cull_mode: Option<Face>,
     // todo: screen/pixel space billboard?
     /// If true, render the object at the center of the projectile facing the camera **orthographically** and **to scale**.
+    ///
+    /// Since we allow rotation,
+    /// in order for the projectile to actually face the camera,
+    /// its local rotation must be either 0 or around the Z axis.
     pub billboard: bool,
 }
 

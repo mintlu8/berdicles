@@ -16,6 +16,7 @@ use bevy::{
         render_resource::{BufferInitDescriptor, BufferUsages},
         renderer::RenderDevice,
         sync_world::MainEntity,
+        view::RenderLayers,
         Extract,
     },
     utils::HashMap,
@@ -42,6 +43,9 @@ pub struct ExtractedProjectileBuffers {
 
 #[derive(Resource, Default, Deref, DerefMut)]
 pub struct ExtractedTransforms(HashMap<MainEntity, GlobalTransform>);
+
+#[derive(Resource, Default, Deref, DerefMut)]
+pub struct ExtractedRenderLayers(HashMap<MainEntity, RenderLayers>);
 
 impl ExtractedProjectileBuffers {
     pub fn entities(&self) -> impl Iterator<Item = &MainEntity> {
@@ -71,6 +75,7 @@ pub(crate) fn extract_buffers(
     references: Extract<Query<(Entity, &ProjectileRef)>>,
     one_shot: Extract<Query<(Entity, &CompiledHairBuffer)>>,
     transforms: Extract<Query<(Entity, &GlobalTransform)>>,
+    layers: Extract<Query<(Entity, &RenderLayers)>>,
     mut commands: Commands,
 ) {
     let buffers = ExtractedProjectileBuffers {
@@ -104,6 +109,13 @@ pub(crate) fn extract_buffers(
         transforms
             .iter_many(buffers.entities().map(|x| x.id()))
             .map(|(entity, transform)| (MainEntity::from(entity), *transform))
+            .collect(),
+    ));
+
+    commands.insert_resource(ExtractedRenderLayers(
+        layers
+            .iter_many(buffers.entities().map(|x| x.id()))
+            .map(|(entity, layers)| (MainEntity::from(entity), layers.clone()))
             .collect(),
     ));
 
