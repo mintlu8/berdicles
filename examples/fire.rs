@@ -227,7 +227,7 @@ fn setup(mut commands: Commands, server: Res<AssetServer>, mut meshes: ResMut<As
 
     // ground plane
     commands.spawn((
-        Mesh3d(meshes.add(Plane3d::default().mesh().size(50.0, 50.0).subdivisions(10))),
+        Mesh3d(meshes.add(Plane3d::default().mesh().size(100.0, 100.0).subdivisions(10))),
         MeshMaterial3d(server.add(StandardMaterial::from_color(Srgba::GREEN))),
         Transform::from_xyz(0., -0.5, 0.),
     ));
