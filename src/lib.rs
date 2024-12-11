@@ -167,7 +167,7 @@ fn sort_unstable<T>(buf: &mut [T], mut key: impl FnMut(&T) -> bool) {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExpirationState {
     None,
-    Fizzle,
+    FadeOut,
     Explode,
 }
 
@@ -176,10 +176,10 @@ impl ExpirationState {
         !matches!(self, Self::None)
     }
 
-    /// Returns [`ExpirationState::Fizzle`] if true.
+    /// Returns [`ExpirationState::FadeOut`] if true.
     pub const fn fizzle_if(cond: bool) -> Self {
         if cond {
-            Self::Fizzle
+            Self::FadeOut
         } else {
             Self::None
         }

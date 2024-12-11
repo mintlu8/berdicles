@@ -76,7 +76,7 @@ impl Projectile for MainParticle {
 
     fn expiration_state(&self) -> ExpirationState {
         if self.life_time > 8.0 {
-            ExpirationState::Fizzle
+            ExpirationState::FadeOut
         } else {
             ExpirationState::None
         }

@@ -3,7 +3,7 @@ mod util;
 use berdicles::{
     util::{random_circle, transform_from_derivative},
     ErasedEventParticleSystem, ErasedSubParticleSystem, EventProjectileSystem, ExpirationState,
-    InstancedMaterial3d, ParticleEventType, Projectile, ProjectileCluster, ProjectileEvent,
+    InstancedMaterial3d, ProjectileEventType, Projectile, ProjectileCluster, ProjectileEvent,
     ProjectileEventBuffer, ProjectileParent, ProjectilePlugin, ProjectileSystem, StandardParticle,
     SubProjectileSystem,
 };
@@ -134,7 +134,7 @@ impl Projectile for TrailParticle {
 
     fn expiration_state(&self) -> ExpirationState {
         if self.life_time > 1.0 {
-            ExpirationState::Fizzle
+            ExpirationState::FadeOut
         } else {
             ExpirationState::None
         }
@@ -246,7 +246,7 @@ impl ProjectileSystem for CollisionSpawner {
 impl EventProjectileSystem for CollisionSpawner {
     fn spawn_on_event(&mut self, parent: &ProjectileEvent) -> usize {
         match parent.event {
-            ParticleEventType::Explode => 12,
+            ProjectileEventType::Explode => 12,
             _ => 0,
         }
     }

@@ -11,18 +11,18 @@ use crate::{
 
 /// Event on individual particle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ParticleEventType {
+pub enum ProjectileEventType {
     Explode,
-    Fizzle,
+    FadeOut,
     Collide,
 }
 
-impl From<ExpirationState> for ParticleEventType {
+impl From<ExpirationState> for ProjectileEventType {
     fn from(value: ExpirationState) -> Self {
         match value {
             ExpirationState::None => panic!(),
-            ExpirationState::Fizzle => ParticleEventType::Fizzle,
-            ExpirationState::Explode => ParticleEventType::Explode,
+            ExpirationState::FadeOut => ProjectileEventType::FadeOut,
+            ExpirationState::Explode => ProjectileEventType::Explode,
         }
     }
 }
@@ -30,7 +30,7 @@ impl From<ExpirationState> for ParticleEventType {
 /// Event and data on an individual particle.
 #[derive(Debug, Clone, Copy)]
 pub struct ProjectileEvent {
-    pub event: ParticleEventType,
+    pub event: ProjectileEventType,
     pub seed: f32,
     pub index: u32,
     pub lifetime: f32,

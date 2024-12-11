@@ -60,7 +60,7 @@ impl Projectile for MyParticle {
 
     fn expiration_state(&self) -> ExpirationState {
         if self.life_time > 20.0 {
-            ExpirationState::Fizzle
+            ExpirationState::FadeOut
         } else {
             ExpirationState::None
         }
